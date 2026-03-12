@@ -1,3 +1,386 @@
+use serde::Deserialize;
+use serde::Serialize;
+// use core::f64::{powf, powi};
+// use core::f64::
+
+// Root Struct
+#[derive(Debug, Deserialize)]
+pub struct RxPreset {
+    #[serde(rename = "@name")]
+    pub name: String,
+    
+    // #[serde(rename = "@author")]
+    // author: Option<String>,
+    
+    // #[serde(rename = "@comment")]
+    // comment: Option<String>,
+    
+    #[serde(rename = "$value")]
+    pub tags: Vec<RxTag>,
+}
+
+// Enum to Catch Interleaved Tags:
+#[derive(Debug, Deserialize)]
+pub enum RxTag {
+    #[serde(rename = "PARAM")]
+    Param(Param),
+    
+    #[serde(rename = "SAMPLES")]
+    Samples(Samples),
+    
+    #[serde(rename = "GUI")]
+    Gui(Gui),
+}
+
+// Generic Param Tag:
+#[derive(Debug, Deserialize)]
+pub struct Param {
+    #[serde(rename = "@id")]
+    pub id: String,
+    
+    #[serde(rename = "@value")]
+    pub value: Option<f64>, 
+}
+
+// Samples Container:
+#[derive(Debug, Deserialize)]
+pub struct Samples {
+    #[serde(rename = "SAMPLE", default)]
+    pub items: Vec<Sample>,
+}
+
+// Individual Sample:
+#[derive(Debug, Deserialize)]
+pub struct Sample {
+    #[serde(rename = "@id")]
+    pub id: String,
+    
+    #[serde(rename = "@reversed")]
+    pub reversed: bool,
+    
+    #[serde(rename = "@gain")]
+    pub gain: f64,
+    
+    #[serde(rename = "@start")]
+    pub start: u64,
+    
+    #[serde(rename = "@end")]
+    pub end: u64,
+    
+    #[serde(rename = "REFERENCES")]
+    pub references: Option<References>,
+}
+
+// References Container:
+#[derive(Debug, Deserialize)]
+pub struct References {
+    #[serde(rename = "REFERENCE", default)]
+    pub reference: Option<Reference>,
+}
+
+// Individual Reference:
+#[derive(Debug, Deserialize, Default)]
+pub struct Reference {
+    #[serde(rename = "@type")]
+    pub ref_type: String,
+    
+    #[serde(rename = "@value")]
+    pub value: String,
+}
+
+// GUI Container:
+#[derive(Debug, Deserialize)]
+pub struct Gui {
+    #[serde(rename = "PARAM", default)]
+    pub params: Vec<Param>, 
+}
+
+
+#[derive(Debug)]
+pub struct IntermediatePreset {
+    pub polyphony: [u8; 8],
+    pub volume: f64,
+    pub velocity: f64,
+    pub layout: bool,
+    pub bank: f64,
+    pub mode: f64,
+    pub pads: [IntermediatePad; 32],
+}
+impl IntermediatePreset {
+    pub fn new() -> Self {
+        // defaults based on "All clear.rx1200"
+        IntermediatePreset {
+            polyphony: [0; 8],
+            volume: 0.699999988079071,
+            velocity: 0.0,
+            layout: false,
+            bank: 0.0,
+            mode: 0.0,
+            pads: std::array::from_fn(|i| {IntermediatePad::new(i)}),
+        }
+    }
+    
+    pub fn assign_midi_keys(&mut self) {
+        if self.layout {
+            let mut pad_index = 0;
+            for bank in 0..4  {
+                let mut midikey = 12 * bank + 36;
+                for _ in 0..8  {
+                    self.pads[pad_index].midikey = midikey;
+                    midikey += 1;
+                    pad_index += 1;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IntermediatePad {
+    pub inactive: bool,
+    pub pitch: u8,
+    pub decay: f64,
+    pub level: u8,
+    pub pan: f64,
+    pub pad: f64,
+    pub output: u8,
+    pub filter: u8,
+    pub finetune: f64,
+    pub gain: f64,
+    pub mono: u8,
+    pub speed: u8,
+    pub sample_path: String,
+    pub factory_content: bool,
+    pub play_range_start: f64,
+    pub play_range_end: f64,
+    pub loop_range_start: f64,
+    pub loop_range_end: f64,
+    pub loop_mode: u8,
+    pub midikey: u8,
+    pub color: u8,
+}
+impl IntermediatePad {
+    pub fn new(i: usize) -> Self {
+        // defaults based on "All clear.rx1200"
+        let i = i as u8;
+        IntermediatePad {
+            inactive: false,
+            pitch: 8,
+            decay: 1.0,
+            level: 15,
+            pan: 0.5,
+            pad: 0.0,
+            output: (i % 8),
+            filter: 0,
+            finetune: 0.5,
+            gain: 0.1000000014901161,
+            mono: 0,
+            speed: 0,
+            sample_path: String::new(),
+            factory_content: true,
+            play_range_start: 0.0,
+            play_range_end: 1.0,
+            loop_range_start: 0.0,
+            loop_range_end: 1.0,
+            loop_mode: 0,
+            midikey: 36 + i,
+            color: 0,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename = "taldrum")]
+pub struct TdPreset {
+    #[serde(rename = "@version")]
+    pub version: u8,
+    
+    // #[serde(rename = "@path")]
+    // pub path: String,
+    
+    #[serde(rename = "@name")]
+    pub name: String,
+    
+    #[serde(rename = "@volume")]
+    pub volume: f64,
+    
+    // #[serde(rename = "@panelmode")]
+    // pub panelmode: String,
+    
+    #[serde(rename = "pads")]
+    pub pads: TdPads,
+    
+    // #[serde(rename = "midimap")]
+    // pub global: MidiMap,
+}
+
+
+#[derive(Debug, Serialize)]
+pub struct TdPads {
+    // A Vec named "Pad" will serialize into repeating <Pad> tags
+    #[serde(rename = "pad")]
+    pub items: Vec<TdPad>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TdPad {
+    // #[serde(rename = "@version")]
+    // pub version: u8,
+    
+    // #[serde(rename = "@activemappings")]
+    // pub activemappings: u8,
+    
+    #[serde(rename = "@colour")]
+    pub colour: i32,
+    
+    #[serde(rename = "@volume")]
+    pub volume: f64,
+    
+    #[serde(rename = "@pan")]
+    pub pan: f64,
+    
+    // #[serde(rename = "@pitch")]
+    // pub pitch: f64,
+    
+    #[serde(rename = "@midikey")]
+    pub midikey: u8,
+    
+    #[serde(rename = "mappings")]
+    pub mappings: TdMappings,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TdMappings {
+    #[serde(rename = "mapping")]
+    pub mapping: TdMapping,
+}
+
+#[derive(Debug, Serialize)]
+pub struct  TdMapping {
+    #[serde(rename = "@path")]
+    pub path: String,
+
+    #[serde(rename = "@tune")]
+    pub tune: f64,
+
+    #[serde(rename = "@finetune")]
+    pub finetune: f64,
+
+    #[serde(rename = "@volume")]
+    pub volume: f64,
+
+    #[serde(rename = "@velocityintensity")]
+    pub velocityintensity: f64,
+}
+
+
+pub fn pad_id_to_index(pad_id: &str) -> usize {
+    let bytes = pad_id.as_bytes();
+    let bank = (bytes[0] - b'a') as usize;
+    let pad = (bytes[1] - b'1') as usize;
+    8 * bank + pad
+}
+
+pub fn process_param(param: &Param, intermediate: &mut IntermediatePreset) {
+
+    if param.value.is_none() { return; }
+    let value = param.value.unwrap();
+
+    let param_name: &str;
+
+    if !param.id.contains('_') {
+        param_name = &param.id;
+        match param_name {
+            "volume" => intermediate.volume = value,
+            "velocity" => intermediate.velocity = value,
+            "layout" => intermediate.layout = (value != 0.0) as bool,
+            _ => (),
+        }
+        return;
+    }
+
+    let (a, b) = param.id.split_once('_').expect("foo..."); // e.g. "A_B_C" -> "A", "B_C"
+                
+    // Polyphony:
+    if b.len() == 1 {
+        let index = (b.as_bytes()[0] - b'1') as usize;
+        intermediate.polyphony[index] = value as u8;
+        return;
+    }
+    
+    let pad_id: &str;
+
+    if a.len() == 2 {
+        pad_id = a;
+        param_name = b;
+    } else {
+        let (a, b) = param.id.split_once('_').expect("foo..."); // e.g. "A_B_C" -> "A_B", "C"
+        pad_id = b;
+        param_name = a;
+    }
+
+    let pad_index: usize = pad_id_to_index(pad_id);
+
+    match param_name {
+        "pitch" => intermediate.pads[pad_index].pitch = (15.0 * value).round() as u8,
+        "decay" => intermediate.pads[pad_index].decay = value,
+        "level" => intermediate.pads[pad_index].level = (15.0 * value).round() as u8,
+        "pan" => intermediate.pads[pad_index].pan = value,
+        "pad" => intermediate.pads[pad_index].pad = value,
+        "output" => intermediate.pads[pad_index].output = value as u8,
+        "filter" => intermediate.pads[pad_index].filter = value as u8,
+        "finetune" => intermediate.pads[pad_index].finetune = value,
+        "gain" => intermediate.pads[pad_index].gain = value,
+        "mono" => intermediate.pads[pad_index].mono = value as u8,
+        "speed" => intermediate.pads[pad_index].speed = value as u8,
+        "loop_mode" => intermediate.pads[pad_index].loop_mode = value as u8,
+        "loop_range_end" => intermediate.pads[pad_index].loop_range_end = value,
+        "loop_range_start" => intermediate.pads[pad_index].loop_range_start = value,
+        "play_range_end" => intermediate.pads[pad_index].play_range_end = value,
+        "play_range_start" => intermediate.pads[pad_index].play_range_start = value,
+        _ => ()
+    }
+}
+
+pub fn process_samples_container(samples: &Samples, intermediate: &mut IntermediatePreset) {
+    for sample in samples.items.iter() {
+        let pad_index: usize = pad_id_to_index(&sample.id);
+        if sample.references.is_none() {
+            intermediate.pads[pad_index].inactive = true;
+            continue;
+        }
+        let references = sample.references.as_ref().unwrap();
+        if references.reference.is_none() {
+            intermediate.pads[pad_index].inactive = true;
+            continue;
+        }
+        let reference = references.reference.as_ref().unwrap();
+        intermediate.pads[pad_index].sample_path = reference.value.clone();
+        intermediate.pads[pad_index].factory_content = reference.ref_type == "productCommonData";
+    }
+}
+
+pub fn process_gui_container(gui: &Gui, intermediate: &mut IntermediatePreset) {
+    for g in gui.params.iter() {
+        if g.value.is_none() { continue }
+        let value = g.value.unwrap();
+        if !g.id.contains('_') {
+            match g.id.as_str() {
+                "bank" => intermediate.bank = value,
+                "mode" => intermediate.mode = value,
+                _ => (),
+            }
+            continue;
+        }
+
+        let (_, pad_id) = g.id.split_once('_').expect("foo...");
+        let pad_index: usize = pad_id_to_index(pad_id);
+        intermediate.pads[pad_index].color = (value * 7.0).round() as u8;
+    }
+}
+
+
+
 // Transformation Functions:
 
 pub fn rx_color_to_td_color(color: u8) -> i32 {
