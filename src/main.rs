@@ -1,6 +1,5 @@
 #![allow(warnings, unused)]
 
-// // use std::fs;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -10,7 +9,6 @@ use quick_xml::events::{Event, BytesDecl};
 use quick_xml::Writer;
 
 use std::fs;
-// use std::intrinsics::powf64;
 use std::io::{BufWriter, Write};
 
 
@@ -154,9 +152,8 @@ fn process_param(param: &Param, intermediate: &mut IntermediatePreset) {
     let pad_index: usize = pad_id_to_index(pad_id);
 
     match param_name {
-        "pitch" => intermediate.pads[pad_index].pitch = (15.0 * value).round() as i8 - 8,
+        "pitch" => intermediate.pads[pad_index].pitch = (15.0 * value).round() as u8,
         "decay" => intermediate.pads[pad_index].decay = value,
-        // "level" => intermediate.pads[pad_index].level = value,
         "level" => intermediate.pads[pad_index].level = (15.0 * value).round() as u8,
         "pan" => intermediate.pads[pad_index].pan = value,
         "pad" => intermediate.pads[pad_index].pad = value,
@@ -215,6 +212,9 @@ fn process_gui_container(gui: &Gui, intermediate: &mut IntermediatePreset) {
     }
 }
 
+
+// Transformation Functions:
+
 fn rx_color_to_td_color(color: u8) -> i32 {
     match color {
         0 => return -13262337, // #35A1FF
@@ -253,7 +253,94 @@ fn rx_level_and_gain_to_td_volume(level: u8, gain: f64) -> f64 {
     0.5 * f64::sqrt(level * 10.0 * gain)
 }
 
+fn rx_velocity_to_td_velocity(rx_velocity: f64) -> f64 {
+    (127.0 / 126.0) * (1.0 - f64::powf(0.01, rx_velocity))
+}
 
+fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
+    let mut rx_pitch: f64 = match rx_pitch {
+         0 =>  81.0 / 128.0,
+         1 =>  85.0 / 128.0,
+         2 =>  91.0 / 128.0,
+         3 =>  96.0 / 128.0,
+         4 => 102.0 / 128.0,
+         5 => 108.0 / 128.0,
+         6 => 114.0 / 128.0,
+         7 => 121.0 / 128.0,
+         8 => 128.0 / 128.0,
+         9 => 136.0 / 128.0,
+        10 => 144.0 / 128.0,
+        11 => 152.0 / 128.0,
+        12 => 161.0 / 128.0,
+        13 => 171.0 / 128.0,
+        14 => 181.0 / 128.0,
+        15 => 192.0 / 128.0,
+        _  => 1.0
+    };
+    rx_pitch = 12.0 * f64::log2(rx_pitch);
+    
+    let mut rx_speed: f64 = match rx_speed {
+        0 => 0.5,
+        1 => 1.0,
+        2 => 44.0 / 33.0,
+        3 => 1.5,
+        4 => 2.0,
+        5 => 78.0 / 33.0,
+        _ => 1.0
+    };
+    rx_speed = 12.0 * f64::log2(rx_speed);
+
+    let rx_finetune = 2.0 * rx_finetune - 1.0;
+
+    let total = rx_pitch + rx_speed + rx_finetune;
+    let td_tune = (total.round() + 48.0) / 96.0;
+    let td_finetune = total.fract() + 0.5;
+
+    (td_tune, td_finetune)
+}
+
+fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64) {
+    // let rx_master_volume_db = 60.0 * f64::log10(rx_master_volume) + 9.3;
+    // let rx_master_volume_db = 60.0 * f64::log10(rx_master_volume) + 9.2941178681360821;
+    // let rx_master_volume_db = 60.0 * f64::log10(rx_master_volume * 10.0 / 7.0);
+    let rx_master_volume_db = 60.0 * f64::log10(rx_master_volume / 0.6999998092651367);
+    // let rx_master_volume_db = 60.0 * f64::log10(rx_master_volume * 1.4285718178263577);
+    let td_master_volume_db;
+    let td_pad_volume_adjustment_db;
+    let td_max_volume_db = 20.0 * f64::log10(4.0 / 3.0);
+    // println!("{td_max_volume_db}");
+    if rx_master_volume_db > td_max_volume_db {
+        td_master_volume_db = td_max_volume_db;
+        td_pad_volume_adjustment_db = rx_master_volume_db - td_max_volume_db;
+    } else {
+        td_master_volume_db = rx_master_volume_db;
+        td_pad_volume_adjustment_db = 0.0;
+    }
+
+    let td_master_volume = 0.75 * f64::powf(10.0, td_master_volume_db / 20.0);
+    let td_pad_volume_adjustment = 0.5 * f64::powf(10.0, td_pad_volume_adjustment_db / 40.0);
+    
+    (td_master_volume, td_pad_volume_adjustment)
+}
+
+fn rx_master_volume_to_td_master_volume2(rx_master_volume: f64) -> (f64, f64) {
+    let a = 0.6999998092651;
+    let rx_master_volume = rx_master_volume / 0.6999998092651;
+    let td_master_volume: f64;
+    let td_pad_volume_adjustment: f64;
+
+    if rx_master_volume > f64::powf(4.0 / 3.0, 1.0 / 3.0) {
+        td_master_volume = 1.0;
+        // td_pad_volume_adjustment = f64::sqrt(f64::powi(rx_master_volume / a, 3) * 3.0 / 16.0);
+        td_pad_volume_adjustment = f64::sqrt(f64::powi(rx_master_volume, 3) * 3.0 / 16.0);
+    } else {
+        td_master_volume = 0.75 * f64::powi(rx_master_volume, 3);
+        td_pad_volume_adjustment = 0.5;
+    }
+
+    
+    (td_master_volume, td_pad_volume_adjustment)
+}
 
 #[derive(Debug)]
 struct IntermediatePreset {
@@ -265,36 +352,9 @@ struct IntermediatePreset {
     mode: f64,
     pads: [IntermediatePad; 32],
 }
-
-// defaults based on "All clear.rx1200"
 impl IntermediatePreset {
     fn new() -> Self {
-        let pads_array: [IntermediatePad; 32] = std::array::from_fn(|i| {
-            IntermediatePad {
-                inactive: false,
-                pitch: 0,
-                decay: 1.0,
-                level: 15,
-                pan: 0.5,
-                pad: 0.0,
-                output: (i % 8) as u8,
-                filter: 0,
-                finetune: 0.5,
-                gain: 0.1000000014901161,
-                mono: 0,
-                speed: 0,
-                sample_path: String::new(),
-                factory_content: true,
-                play_range_start: 0.0,
-                play_range_end: 1.0,
-                loop_range_start: 0.0,
-                loop_range_end: 1.0,
-                loop_mode: 0,
-                midikey: 36 + i as u8,
-                color: 0,
-            }
-        });
-
+        // defaults based on "All clear.rx1200"
         IntermediatePreset {
             polyphony: [0; 8],
             volume: 0.699999988079071,
@@ -302,7 +362,21 @@ impl IntermediatePreset {
             layout: false,
             bank: 0.0,
             mode: 0.0,
-            pads: pads_array,
+            pads: std::array::from_fn(|i| {IntermediatePad::new(i)}),
+        }
+    }
+    
+    fn assign_midi_keys(&mut self) {
+        if self.layout {
+            let mut pad_index = 0;
+            for bank in 0..4  {
+                let mut midikey = 12 * bank + 36;
+                for _ in 0..8  {
+                    self.pads[pad_index].midikey = midikey;
+                    midikey += 1;
+                    pad_index += 1;
+                }
+            }
         }
     }
 }
@@ -310,7 +384,7 @@ impl IntermediatePreset {
 #[derive(Debug)]
 struct IntermediatePad {
     inactive: bool,
-    pitch: i8,
+    pitch: u8,
     decay: f64,
     level: u8,
     pan: f64,
@@ -331,18 +405,32 @@ struct IntermediatePad {
     midikey: u8,
     color: u8,
 }
-
-
-fn assign_midi_keys(preset: &mut IntermediatePreset) {
-    if preset.layout {
-        let mut pad_index = 0;
-        for bank in 0..4  {
-            let mut midikey = 12 * bank + 36;
-            for _ in 0..8  {
-                preset.pads[pad_index].midikey = midikey;
-                midikey += 1;
-                pad_index += 1;
-            }
+impl IntermediatePad {
+    fn new(i: usize) -> Self {
+        // defaults based on "All clear.rx1200"
+        let i = i as u8;
+        IntermediatePad {
+            inactive: false,
+            pitch: 8,
+            decay: 1.0,
+            level: 15,
+            pan: 0.5,
+            pad: 0.0,
+            output: (i % 8),
+            filter: 0,
+            finetune: 0.5,
+            gain: 0.1000000014901161,
+            mono: 0,
+            speed: 0,
+            sample_path: String::new(),
+            factory_content: true,
+            play_range_start: 0.0,
+            play_range_end: 1.0,
+            loop_range_start: 0.0,
+            loop_range_end: 1.0,
+            loop_mode: 0,
+            midikey: 36 + i,
+            color: 0,
         }
     }
 }
@@ -359,8 +447,8 @@ pub struct TdPreset {
     #[serde(rename = "@name")]
     pub name: String,
     
-    // #[serde(rename = "@volume")]
-    // pub volume: String,
+    #[serde(rename = "@volume")]
+    pub volume: f64,
     
     // #[serde(rename = "@panelmode")]
     // pub panelmode: String,
@@ -372,10 +460,10 @@ pub struct TdPreset {
     // pub global: MidiMap,
 }
 
-#[derive(Debug, Serialize)]
-pub struct MidiMap {
+// #[derive(Debug, Serialize)]
+// pub struct MidiMap {
 
-}
+// }
 
 #[derive(Debug, Serialize)]
 pub struct TdPads {
@@ -392,11 +480,17 @@ pub struct TdPad {
     // #[serde(rename = "@activemappings")]
     // pub activemappings: u8,
     
-    // #[serde(rename = "@colour")]
-    // pub colour: i32,
+    #[serde(rename = "@colour")]
+    pub colour: i32,
     
     #[serde(rename = "@volume")]
     pub volume: f64,
+    
+    #[serde(rename = "@pan")]
+    pub pan: f64,
+    
+    // #[serde(rename = "@pitch")]
+    // pub pitch: f64,
     
     #[serde(rename = "@midikey")]
     pub midikey: u8,
@@ -415,26 +509,39 @@ pub struct TdMappings {
 pub struct  TdMapping {
     #[serde(rename = "@path")]
     pub path: String,
+
+    #[serde(rename = "@tune")]
+    pub tune: f64,
+
+    #[serde(rename = "@finetune")]
+    pub finetune: f64,
+
+    #[serde(rename = "@volume")]
+    pub volume: f64,
+
+    #[serde(rename = "@velocityintensity")]
+    pub velocityintensity: f64,
 }
 
 
+
 fn main() {
-    {    
+
     // let path = "AliveandKickin.rx1200";
     // let xml = fs::read_to_string(path).expect("Didn't work");
-    }
     
-    let xml_data = include_str!("AliveandKickin.rx1200");
+    // let xml_data = include_str!(r"Alive and Kickin.rx1200");
+    let xml_data = include_str!(r"..\Extra Files\Alive and Kickin.rx1200");
+    let xml_data = include_str!(r"..\Extra Files\a.rx1200");
+    let xml_data = include_str!(r"C:\Users\Nadav\AppData\Roaming\Inphonik\RX1200\Collections\User Collection\a.rx1200");
     // let xml_data = include_str!("AllClear.rx1200");
     // let xml_data = include_str!("YoungBlood808.rx1200");
 
     // Deserialize XML:
     let rx_preset: RxPreset = from_str(xml_data).expect("Failed to parse RX1200 preset");
-
-    let mut intermediate_preset = IntermediatePreset::new();
-
     
     // process and sort tags into intermediate struct:
+    let mut intermediate_preset = IntermediatePreset::new();
     for tag in rx_preset.tags {
         match tag {
             RxTag::Param(p) => process_param(&p, &mut intermediate_preset),
@@ -442,26 +549,43 @@ fn main() {
             RxTag::Gui(g) => process_gui_container(&g, &mut intermediate_preset),
         }
     }
+    intermediate_preset.assign_midi_keys();
+
     // for pad in intermediate.pads  { if !pad.inactive {println!("{pad:?}\n");} }
 
-    assign_midi_keys(&mut intermediate_preset);
-
     let mut td_pads = TdPads { items: Vec::new() };
+    let mut pad_count: u8 = 0;
+    let td_velocity = rx_velocity_to_td_velocity(intermediate_preset.velocity);
+    let (td_master_volume, td_pad_volume_adjustment) = rx_master_volume_to_td_master_volume2(intermediate_preset.volume);
+    println!("{td_master_volume} {td_pad_volume_adjustment}");
     for pad in intermediate_preset.pads {
-        if pad.inactive {continue;}
+        if pad.inactive {continue}
+        // println!("{pad:?}\n");
+        let (td_tune, td_finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
         let td_pad = TdPad {
-            // sample_path: Some(pad.sample_path),
+            colour: rx_color_to_td_color(pad.color),
             volume: rx_level_and_gain_to_td_volume(pad.level, pad.gain),
+            pan: pad.pan,
+            // pitch: 0.5,
             midikey: pad.midikey,
-            // midikey: 36.000,
-            mappings: TdMappings { mapping:TdMapping { path: pad.sample_path, } }
+            mappings: TdMappings {
+                mapping:TdMapping {
+                    path: r"C:/ProgramData/Inphonik/RX1200".to_owned() + pad.sample_path.as_str(),
+                    tune: td_tune,
+                    finetune: td_finetune,
+                    volume: td_pad_volume_adjustment,
+                    velocityintensity: td_velocity,
+                }
+            }
         };
         td_pads.items.push(td_pad);
+        pad_count += 1;
     }
 
     let mut td_preset = TdPreset {
         version: 13,
         name: rx_preset.name,
+        volume: td_master_volume,
         pads: td_pads,
     };
     // println!("{td_preset:?}");
@@ -469,7 +593,5 @@ fn main() {
     let raw_xml = to_string(&td_preset).expect("Failed to serialize preset");
     // println!("{raw_xml}");
     let final_xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}", raw_xml);
-    fs::write("Converted_Preset.xml", final_xml).expect("Failed to write file");
-
-
+    fs::write("Converted_Preset.taldrum", final_xml).expect("Failed to write file");
 }
