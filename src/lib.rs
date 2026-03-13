@@ -1,7 +1,10 @@
+#![allow(warnings, unused)]
+
 use serde::Deserialize;
 use serde::Serialize;
-// use core::f64::{powf, powi};
-// use core::f64::
+
+use hound;
+
 
 // Root Struct
 #[derive(Debug, Deserialize)]
@@ -23,18 +26,18 @@ pub struct RxPreset {
 #[derive(Debug, Deserialize)]
 pub enum RxTag {
     #[serde(rename = "PARAM")]
-    Param(Param),
+    Param(RxParam),
     
     #[serde(rename = "SAMPLES")]
     Samples(Samples),
     
     #[serde(rename = "GUI")]
-    Gui(Gui),
+    Gui(RxGui),
 }
 
 // Generic Param Tag:
 #[derive(Debug, Deserialize)]
-pub struct Param {
+pub struct RxParam {
     #[serde(rename = "@id")]
     pub id: String,
     
@@ -62,25 +65,25 @@ pub struct Sample {
     pub gain: f64,
     
     #[serde(rename = "@start")]
-    pub start: u64,
+    pub start: u32,
     
     #[serde(rename = "@end")]
-    pub end: u64,
+    pub end: u32,
     
     #[serde(rename = "REFERENCES")]
-    pub references: Option<References>,
+    pub references: Option<RxReferences>,
 }
 
 // References Container:
 #[derive(Debug, Deserialize)]
-pub struct References {
-    #[serde(rename = "REFERENCE", default)]
-    pub reference: Option<Reference>,
+pub struct RxReferences {
+    #[serde(rename = "REFERENCE")]
+    pub reference: Option<RxReference>,
 }
 
 // Individual Reference:
-#[derive(Debug, Deserialize, Default)]
-pub struct Reference {
+#[derive(Debug, Deserialize)]
+pub struct RxReference {
     #[serde(rename = "@type")]
     pub ref_type: String,
     
@@ -90,14 +93,15 @@ pub struct Reference {
 
 // GUI Container:
 #[derive(Debug, Deserialize)]
-pub struct Gui {
+pub struct RxGui {
     #[serde(rename = "PARAM", default)]
-    pub params: Vec<Param>, 
+    pub params: Vec<RxParam>, 
 }
 
 
 #[derive(Debug)]
 pub struct IntermediatePreset {
+    pub name: String,
     pub polyphony: [u8; 8],
     pub volume: f64,
     pub velocity: f64,
@@ -110,6 +114,7 @@ impl IntermediatePreset {
     pub fn new() -> Self {
         // defaults based on "All clear.rx1200"
         IntermediatePreset {
+            name: String::new(),
             polyphony: [0; 8],
             volume: 0.699999988079071,
             velocity: 0.0,
@@ -138,10 +143,12 @@ impl IntermediatePreset {
 #[derive(Debug)]
 pub struct IntermediatePad {
     pub inactive: bool,
+
     pub pitch: u8,
     pub decay: f64,
     pub level: u8,
     pub pan: f64,
+
     pub pad: f64,
     pub output: u8,
     pub filter: u8,
@@ -149,13 +156,20 @@ pub struct IntermediatePad {
     pub gain: f64,
     pub mono: u8,
     pub speed: u8,
+
     pub sample_path: String,
-    pub factory_content: bool,
+    pub sample_length: u32,
+    pub sample_reversed: bool,//false,
+    pub sample_gain: f64,//1.0,
+    pub sample_start: u32,//0,
+    pub sample_end: u32,//0
+
     pub play_range_start: f64,
     pub play_range_end: f64,
     pub loop_range_start: f64,
     pub loop_range_end: f64,
     pub loop_mode: u8,
+
     pub midikey: u8,
     pub color: u8,
 }
@@ -165,10 +179,12 @@ impl IntermediatePad {
         let i = i as u8;
         IntermediatePad {
             inactive: false,
+
             pitch: 8,
             decay: 1.0,
             level: 15,
             pan: 0.5,
+
             pad: 0.0,
             output: (i % 8),
             filter: 0,
@@ -176,18 +192,26 @@ impl IntermediatePad {
             gain: 0.1000000014901161,
             mono: 0,
             speed: 0,
+
             sample_path: String::new(),
-            factory_content: true,
+            sample_length: 0,
+            sample_reversed: false,
+            sample_gain: 1.0,
+            sample_start: 0,
+            sample_end: 0,
+            
             play_range_start: 0.0,
             play_range_end: 1.0,
             loop_range_start: 0.0,
             loop_range_end: 1.0,
             loop_mode: 0,
+
             midikey: 36 + i,
             color: 0,
         }
     }
 }
+
 
 #[derive(Debug, Serialize)]
 #[serde(rename = "taldrum")]
@@ -213,7 +237,6 @@ pub struct TdPreset {
     // #[serde(rename = "midimap")]
     // pub global: MidiMap,
 }
-
 
 #[derive(Debug, Serialize)]
 pub struct TdPads {
@@ -274,6 +297,20 @@ pub struct  TdMapping {
 }
 
 
+pub fn build_intermediate_preset(rx_preset: RxPreset) -> IntermediatePreset {
+    let mut intermediate_preset = IntermediatePreset::new();
+    for tag in rx_preset.tags {
+        match tag {
+            RxTag::Param(param) => process_param(&param, &mut intermediate_preset),
+            RxTag::Samples(samples) => process_samples_container(&samples, &mut intermediate_preset),
+            RxTag::Gui(gui) => process_gui_container(&gui, &mut intermediate_preset),
+        }
+    }
+    intermediate_preset.assign_midi_keys();
+    intermediate_preset.name = rx_preset.name;
+    intermediate_preset
+}
+
 pub fn pad_id_to_index(pad_id: &str) -> usize {
     let bytes = pad_id.as_bytes();
     let bank = (bytes[0] - b'a') as usize;
@@ -281,7 +318,7 @@ pub fn pad_id_to_index(pad_id: &str) -> usize {
     8 * bank + pad
 }
 
-pub fn process_param(param: &Param, intermediate: &mut IntermediatePreset) {
+pub fn process_param(param: &RxParam, intermediate: &mut IntermediatePreset) {
 
     if param.value.is_none() { return; }
     let value = param.value.unwrap();
@@ -345,22 +382,36 @@ pub fn process_param(param: &Param, intermediate: &mut IntermediatePreset) {
 pub fn process_samples_container(samples: &Samples, intermediate: &mut IntermediatePreset) {
     for sample in samples.items.iter() {
         let pad_index: usize = pad_id_to_index(&sample.id);
-        if sample.references.is_none() {
-            intermediate.pads[pad_index].inactive = true;
-            continue;
-        }
-        let references = sample.references.as_ref().unwrap();
-        if references.reference.is_none() {
-            intermediate.pads[pad_index].inactive = true;
-            continue;
-        }
-        let reference = references.reference.as_ref().unwrap();
-        intermediate.pads[pad_index].sample_path = reference.value.clone();
-        intermediate.pads[pad_index].factory_content = reference.ref_type == "productCommonData";
+
+        let ref mut pad = intermediate.pads[pad_index];
+        pad.inactive = false;
+        // if sample.references.is_none() {
+        //     intermediate.pads[pad_index].inactive = true;
+        //     continue;
+        // }
+        // let references = sample.references.as_ref().unwrap();
+        // if references.reference.is_none() {
+        //     intermediate.pads[pad_index].inactive = true;
+        //     continue;
+        // }
+        // let reference = references.reference.as_ref().unwrap();
+        
+        // let sample_path =
+        //     if reference.ref_type == "productCommonData" {r"C:/ProgramData/Inphonik/RX1200".to_string() + reference.value.as_str()}
+        //     else {reference.value.clone()};
+        
+        // let wav = hound::WavReader::open(&sample_path).unwrap(); // ADD CHECK!
+        // intermediate.pads[pad_index].sample_length = wav.duration();
+            
+        // intermediate.pads[pad_index].sample_path = sample_path;
+        // intermediate.pads[pad_index].sample_reversed = sample.reversed;
+        // intermediate.pads[pad_index].gain = sample.gain;
+        // intermediate.pads[pad_index].sample_start = sample.start;
+        // intermediate.pads[pad_index].sample_end = sample.end;
     }
 }
 
-pub fn process_gui_container(gui: &Gui, intermediate: &mut IntermediatePreset) {
+pub fn process_gui_container(gui: &RxGui, intermediate: &mut IntermediatePreset) {
     for g in gui.params.iter() {
         if g.value.is_none() { continue }
         let value = g.value.unwrap();
@@ -481,4 +532,46 @@ pub fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64)
     }
 
     (td_master_volume, td_pad_volume_adjustment)
+}
+
+pub fn rx_sample_params_to_td(rx_play_range_start: u32) {
+
+}
+
+pub fn build_td_preset(intermediate_preset: IntermediatePreset) -> TdPreset {
+    let mut td_pads = TdPads { items: Vec::new() };
+    // let mut pad_count: u8 = 0;
+    let td_velocity = rx_velocity_to_td_velocity(intermediate_preset.velocity);
+    let (td_master_volume, td_pad_volume_adjustment) = rx_master_volume_to_td_master_volume(intermediate_preset.volume);
+    for pad in intermediate_preset.pads {
+        if pad.inactive {continue}
+        // println!("{pad:?}\n");
+        let (td_tune, td_finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
+        let td_pad = TdPad {
+            colour: rx_color_to_td_color(pad.color),
+            volume: rx_level_and_gain_to_td_volume(pad.level, pad.gain),
+            pan: pad.pan,
+            midikey: pad.midikey,
+            mappings: TdMappings {
+                mapping:TdMapping {
+                    path: pad.sample_path,
+                    tune: td_tune,
+                    finetune: td_finetune,
+                    volume: td_pad_volume_adjustment,
+                    velocityintensity: td_velocity,
+                }
+            }
+        };
+        td_pads.items.push(td_pad);
+        // pad_count += 1;
+    }
+
+    let td_preset = TdPreset {
+        version: 13,
+        name: intermediate_preset.name,
+        volume: td_master_volume,
+        pads: td_pads,
+    };
+
+    td_preset
 }
