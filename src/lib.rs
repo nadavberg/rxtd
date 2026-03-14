@@ -119,8 +119,8 @@ impl IntermediatePreset {
             volume: 0.699999988079071,
             velocity: 0.0,
             layout: false,
-            bank: 0.0,
-            mode: 0.0,
+            bank: 0.0, // delete?
+            mode: 0.0, // delete?
             pads: std::array::from_fn(|i| {IntermediatePad::new(i)}),
         }
     }
@@ -253,8 +253,8 @@ pub struct TdPad {
     // #[serde(rename = "@activemappings")]
     // pub activemappings: u8,
     
-    #[serde(rename = "@colour")]
-    pub colour: i32,
+    #[serde(rename = "@colour")] // spelling
+    pub color: i32,
     
     #[serde(rename = "@volume")]
     pub volume: f64,
@@ -283,19 +283,48 @@ pub struct  TdMapping {
     #[serde(rename = "@path")]
     pub path: String,
 
+    #[serde(rename = "@start")]
+    pub start: f64,
+
+    #[serde(rename = "@end")]
+    pub end: f64,
+
+    #[serde(rename = "@loopstart")]
+    pub loopstart: f64,
+
+    #[serde(rename = "@loopend")]
+    pub loopend: f64,
+
+    #[serde(rename = "@fadein")]
+    pub fadein: f64,
+
+    #[serde(rename = "@fadeout")]
+    pub fadeout: f64,
+
+    #[serde(rename = "@truncatestart")]
+    pub truncatestart: f64,
+
+    #[serde(rename = "@truncateend")]
+    pub truncateend: f64,
+
+    #[serde(rename = "@volume")]
+    pub volume: f64,
+
     #[serde(rename = "@tune")]
     pub tune: f64,
 
     #[serde(rename = "@finetune")]
     pub finetune: f64,
 
-    #[serde(rename = "@volume")]
-    pub volume: f64,
-
     #[serde(rename = "@velocityintensity")]
     pub velocityintensity: f64,
-}
 
+    #[serde(rename = "@loopenabled")]
+    pub loopenabled: u8,
+
+    #[serde(rename = "@loopmode")]
+    pub loopmode: u8,
+}
 
 pub fn build_intermediate_preset(rx_preset: RxPreset) -> IntermediatePreset {
     let mut intermediate_preset = IntermediatePreset::new();
@@ -318,7 +347,7 @@ pub fn pad_id_to_index(pad_id: &str) -> usize {
     8 * bank + pad
 }
 
-pub fn process_param(param: &RxParam, intermediate: &mut IntermediatePreset) {
+pub fn process_param(param: &RxParam, preset: &mut IntermediatePreset) {
 
     if param.value.is_none() { return; }
     let value = param.value.unwrap();
@@ -328,20 +357,20 @@ pub fn process_param(param: &RxParam, intermediate: &mut IntermediatePreset) {
     if !param.id.contains('_') {
         param_name = &param.id;
         match param_name {
-            "volume" => intermediate.volume = value,
-            "velocity" => intermediate.velocity = value,
-            "layout" => intermediate.layout = (value != 0.0) as bool,
+            "volume" => preset.volume = value,
+            "velocity" => preset.velocity = value,
+            "layout" => preset.layout = (value != 0.0) as bool,
             _ => (),
         }
         return;
     }
 
-    let (a, b) = param.id.split_once('_').expect("foo..."); // e.g. "A_B_C" -> "A", "B_C"
+    let (a, b) = param.id.split_once('_').expect("foo..."); // e.g. "A_B_C" -> ("A", "B_C")
                 
     // Polyphony:
     if b.len() == 1 {
         let index = (b.as_bytes()[0] - b'1') as usize;
-        intermediate.polyphony[index] = value as u8;
+        preset.polyphony[index] = value as u8;
         return;
     }
     
@@ -351,63 +380,74 @@ pub fn process_param(param: &RxParam, intermediate: &mut IntermediatePreset) {
         pad_id = a;
         param_name = b;
     } else {
-        let (a, b) = param.id.split_once('_').expect("foo..."); // e.g. "A_B_C" -> "A_B", "C"
+        // let (a, b) = param.id.split_once('_').expect("foo...");
+        // let (a, b) = param.id.rsplit_once('_').expect("foo..."); // e.g. "A_B_C" -> ("A_B", "C")
         pad_id = b;
         param_name = a;
+        // println!("{a} {b}");
     }
 
     let pad_index: usize = pad_id_to_index(pad_id);
+    let ref mut pad = preset.pads[pad_index];
 
     match param_name {
-        "pitch" => intermediate.pads[pad_index].pitch = (15.0 * value).round() as u8,
-        "decay" => intermediate.pads[pad_index].decay = value,
-        "level" => intermediate.pads[pad_index].level = (15.0 * value).round() as u8,
-        "pan" => intermediate.pads[pad_index].pan = value,
-        "pad" => intermediate.pads[pad_index].pad = value,
-        "output" => intermediate.pads[pad_index].output = value as u8,
-        "filter" => intermediate.pads[pad_index].filter = value as u8,
-        "finetune" => intermediate.pads[pad_index].finetune = value,
-        "gain" => intermediate.pads[pad_index].gain = value,
-        "mono" => intermediate.pads[pad_index].mono = value as u8,
-        "speed" => intermediate.pads[pad_index].speed = value as u8,
-        "loop_mode" => intermediate.pads[pad_index].loop_mode = value as u8,
-        "loop_range_end" => intermediate.pads[pad_index].loop_range_end = value,
-        "loop_range_start" => intermediate.pads[pad_index].loop_range_start = value,
-        "play_range_end" => intermediate.pads[pad_index].play_range_end = value,
-        "play_range_start" => intermediate.pads[pad_index].play_range_start = value,
+        "pitch" => pad.pitch = (15.0 * value).round() as u8,
+        "decay" => pad.decay = value,
+        "level" => pad.level = (15.0 * value).round() as u8,
+        "pan" => pad.pan = value,
+        "pad" => pad.pad = value,
+        "output" => pad.output = value as u8,
+        "filter" => pad.filter = value as u8,
+        "finetune" => pad.finetune = value,
+        "gain" => pad.gain = value,
+        "mono" => pad.mono = value as u8,
+        "speed" => pad.speed = value as u8,
+        "loop_mode" => pad.loop_mode = value as u8,
+        "loop_range_end" => pad.loop_range_end = value,
+        "loop_range_start" => pad.loop_range_start = value,
+        "play_range_end" => pad.play_range_end = value,
+        "play_range_start" => pad.play_range_start = value,
         _ => ()
     }
 }
 
-pub fn process_samples_container(samples: &Samples, intermediate: &mut IntermediatePreset) {
-    for sample in samples.items.iter() {
+pub fn process_samples_container(samples: &Samples, preset: &mut IntermediatePreset) {
+    // for sample in samples.items.iter() {
+    for sample in &samples.items {
         let pad_index: usize = pad_id_to_index(&sample.id);
+        let ref mut pad = preset.pads[pad_index];
+        
+        if sample.references.is_none() {
+            pad.inactive = true;
+            continue;
+        }
 
-        let ref mut pad = intermediate.pads[pad_index];
-        pad.inactive = false;
-        // if sample.references.is_none() {
-        //     intermediate.pads[pad_index].inactive = true;
-        //     continue;
-        // }
-        // let references = sample.references.as_ref().unwrap();
-        // if references.reference.is_none() {
-        //     intermediate.pads[pad_index].inactive = true;
-        //     continue;
-        // }
-        // let reference = references.reference.as_ref().unwrap();
+        let references = sample.references.as_ref().unwrap();
+        if references.reference.is_none() {
+            pad.inactive = true;
+            continue;
+        }
+        let reference = references.reference.as_ref().unwrap();
+ 
+        pad.sample_reversed = sample.reversed;
+        pad.sample_gain = sample.gain;
+        pad.sample_start = sample.start;
+        pad.sample_end = sample.end;
         
-        // let sample_path =
-        //     if reference.ref_type == "productCommonData" {r"C:/ProgramData/Inphonik/RX1200".to_string() + reference.value.as_str()}
-        //     else {reference.value.clone()};
-        
-        // let wav = hound::WavReader::open(&sample_path).unwrap(); // ADD CHECK!
-        // intermediate.pads[pad_index].sample_length = wav.duration();
-            
-        // intermediate.pads[pad_index].sample_path = sample_path;
-        // intermediate.pads[pad_index].sample_reversed = sample.reversed;
-        // intermediate.pads[pad_index].gain = sample.gain;
-        // intermediate.pads[pad_index].sample_start = sample.start;
-        // intermediate.pads[pad_index].sample_end = sample.end;
+        let sample_path =
+            if reference.ref_type == "productCommonData" {
+                r"C:/ProgramData/Inphonik/RX1200".to_string() + reference.value.as_str()
+            } else {
+                reference.value.clone()
+            };
+        pad.sample_path = sample_path.clone();
+
+        let wav = hound::WavReader::open(&sample_path);
+        if wav.is_err() {
+            println!("{} {}", wav.err().unwrap(), sample_path.rsplit_once('\\').expect("feugh...").1);
+            continue
+        }
+        pad.sample_length = wav.unwrap().duration();
     }
 }
 
@@ -416,6 +456,7 @@ pub fn process_gui_container(gui: &RxGui, intermediate: &mut IntermediatePreset)
         if g.value.is_none() { continue }
         let value = g.value.unwrap();
         if !g.id.contains('_') {
+            // delete? (just continue)
             match g.id.as_str() {
                 "bank" => intermediate.bank = value,
                 "mode" => intermediate.mode = value,
@@ -478,22 +519,22 @@ pub fn rx_velocity_to_td_velocity(rx_velocity: f64) -> f64 {
 
 pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
     let mut rx_pitch: f64 = match rx_pitch {
-         0 =>  81.0 / 128.0,
-         1 =>  85.0 / 128.0,
-         2 =>  91.0 / 128.0,
-         3 =>  96.0 / 128.0,
-         4 => 102.0 / 128.0,
-         5 => 108.0 / 128.0,
-         6 => 114.0 / 128.0,
-         7 => 121.0 / 128.0,
-         8 => 128.0 / 128.0,
-         9 => 136.0 / 128.0,
-        10 => 144.0 / 128.0,
-        11 => 152.0 / 128.0,
-        12 => 161.0 / 128.0,
-        13 => 171.0 / 128.0,
-        14 => 181.0 / 128.0,
-        15 => 192.0 / 128.0,
+         0 =>  81.0 / 128.0, // -8  +7.82
+         1 =>  85.0 / 128.0, // -7  -8.73 cents
+         2 =>  91.0 / 128.0, // -6  +9.35 cents
+         3 =>  96.0 / 128.0, // -5  +1.95 cents     3/4
+         4 => 102.0 / 128.0, // -4  +6.91 cents     51/64
+         5 => 108.0 / 128.0, // -3  +5.86 cents     27/32
+         6 => 114.0 / 128.0, // -2  -0.53 cents     57/64
+         7 => 121.0 / 128.0, // -1  +2.64 cents
+         8 => 128.0 / 128.0, // +0                          Unison
+         9 => 136.0 / 128.0, // +1  +4.96 cents     17/16   Minor diatonic semitone
+        10 => 144.0 / 128.0, // +2  +3.91 cents     9/8     Pythagorean major second
+        11 => 152.0 / 128.0, // +3  -2.49 cents     19/16
+        12 => 161.0 / 128.0, // +4  -2.9  cents
+        13 => 171.0 / 128.0, // +5  +1.42 cents
+        14 => 181.0 / 128.0, // +6  -0.18 cents ?
+        15 => 192.0 / 128.0, // +7  +1.95 cents     3/2     Perfect Fifth
         _  => 1.0
     };
     rx_pitch = 12.0 * f64::log2(rx_pitch);
@@ -501,7 +542,7 @@ pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, r
     let mut rx_speed: f64 = match rx_speed {
         0 => 0.5,
         1 => 1.0,
-        2 => 44.0 / 33.0,
+        2 => 45.0 / 33.0,
         3 => 1.5,
         4 => 2.0,
         5 => 78.0 / 33.0,
@@ -512,8 +553,22 @@ pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, r
     let rx_finetune = 2.0 * rx_finetune - 1.0;
 
     let total = rx_pitch + rx_speed + rx_finetune;
-    let td_tune = (total.round() + 48.0) / 96.0;
-    let td_finetune = total.fract() + 0.5;
+    // let td_tune = (total.round() + 48.0) / 96.0;
+    let mut td_tune = (total.floor() + 48.0) / 96.0;
+    let mut td_finetune = total.fract() + 0.5;
+    
+    // println!("total = {total}, td_tune = {td_tune}, td_finetune = {td_finetune}");
+
+
+    if td_finetune > 1.0 {
+        td_tune += 1.0 / 96.0;
+        td_finetune -= 1.0;
+    }
+    else if td_finetune < 0.0 {
+        td_finetune += 1.0;
+    }
+    
+    // println!("total = {total}, td_tune = {td_tune}, td_finetune = {td_finetune}");
 
     (td_tune, td_finetune)
 }
@@ -534,31 +589,64 @@ pub fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64)
     (td_master_volume, td_pad_volume_adjustment)
 }
 
-pub fn rx_sample_params_to_td(rx_play_range_start: u32) {
+pub fn rx_sample_params_to_td(pad: &mut IntermediatePad) -> (f64, f64) {
+    let sample_length = pad.sample_length as f64;
 
+    let td_truncate_start = pad.sample_start as f64 / sample_length;
+    let td_truncate_end = pad.sample_end as f64 / sample_length;
+
+    let length_as_ratio = td_truncate_end - td_truncate_start;
+    if length_as_ratio < 1.0 {
+        pad.play_range_start = td_truncate_start + length_as_ratio * pad.play_range_start;
+        pad.play_range_end = td_truncate_start + length_as_ratio * pad.play_range_end;   
+        pad.loop_range_start = td_truncate_start + length_as_ratio * pad.loop_range_start;
+        pad.loop_range_end = td_truncate_start + length_as_ratio * pad.loop_range_end;   
+    }
+
+    (td_truncate_start, td_truncate_end)
 }
 
-pub fn build_td_preset(intermediate_preset: IntermediatePreset) -> TdPreset {
+
+
+pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
     let mut td_pads = TdPads { items: Vec::new() };
     // let mut pad_count: u8 = 0;
-    let td_velocity = rx_velocity_to_td_velocity(intermediate_preset.velocity);
-    let (td_master_volume, td_pad_volume_adjustment) = rx_master_volume_to_td_master_volume(intermediate_preset.volume);
-    for pad in intermediate_preset.pads {
+    let td_velocity = rx_velocity_to_td_velocity(preset.velocity);
+    let (td_master_volume, td_volume_adjustment) = rx_master_volume_to_td_master_volume(preset.volume);
+    
+    for mut pad in preset.pads {
         if pad.inactive {continue}
         // println!("{pad:?}\n");
+
+        let td_color = rx_color_to_td_color(pad.color);
+        let td_volume = rx_level_and_gain_to_td_volume(pad.level, pad.gain);
+        let (td_truncate_start, td_truncate_end) = rx_sample_params_to_td(&mut pad);
         let (td_tune, td_finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
+        let td_loopenable = (pad.loop_mode > 0) as u8;
+        let td_pingpong = (pad.loop_mode > 1) as u8;
+
         let td_pad = TdPad {
-            colour: rx_color_to_td_color(pad.color),
-            volume: rx_level_and_gain_to_td_volume(pad.level, pad.gain),
+            color: td_color,
+            volume: td_volume,
             pan: pad.pan,
             midikey: pad.midikey,
             mappings: TdMappings {
                 mapping:TdMapping {
                     path: pad.sample_path,
+                    start: pad.play_range_start,
+                    end: pad.play_range_end,
+                    loopstart: pad.loop_range_start,
+                    loopend: pad.loop_range_end,
+                    fadein: 0.0,
+                    fadeout: 0.0,
+                    truncatestart: td_truncate_start,
+                    truncateend: td_truncate_end,
+                    volume: td_volume_adjustment,
                     tune: td_tune,
                     finetune: td_finetune,
-                    volume: td_pad_volume_adjustment,
                     velocityintensity: td_velocity,
+                    loopenabled: td_loopenable,
+                    loopmode: td_pingpong,
                 }
             }
         };
@@ -568,7 +656,7 @@ pub fn build_td_preset(intermediate_preset: IntermediatePreset) -> TdPreset {
 
     let td_preset = TdPreset {
         version: 13,
-        name: intermediate_preset.name,
+        name: preset.name,
         volume: td_master_volume,
         pads: td_pads,
     };
