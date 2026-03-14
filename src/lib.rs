@@ -222,14 +222,14 @@ pub struct TdPreset {
     // #[serde(rename = "@path")]
     // pub path: String,
     
-    #[serde(rename = "@name")]
-    pub name: String,
+    // #[serde(rename = "@name")]
+    // pub name: String,
     
     #[serde(rename = "@volume")]
     pub volume: f64,
     
-    // #[serde(rename = "@panelmode")]
-    // pub panelmode: String,
+    #[serde(rename = "@numberofpadsmode")]
+    pub numberofpadsmode: u8,
     
     #[serde(rename = "pads")]
     pub pads: TdPads,
@@ -316,8 +316,20 @@ pub struct  TdMapping {
     #[serde(rename = "@finetune")]
     pub finetune: f64,
 
+    #[serde(rename = "@mono")]
+    pub mono: u8,
+
+    #[serde(rename = "@outputmode")]
+    pub outputmode: u8,
+
     #[serde(rename = "@velocityintensity")]
     pub velocityintensity: f64,
+
+    #[serde(rename = "@reversenabled")]
+    pub reversenabled: u8,
+
+    #[serde(rename = "@normalizesample")]
+    pub normalizesample: u8,
 
     #[serde(rename = "@loopenabled")]
     pub loopenabled: u8,
@@ -412,21 +424,13 @@ pub fn process_param(param: &RxParam, preset: &mut IntermediatePreset) {
 }
 
 pub fn process_samples_container(samples: &Samples, preset: &mut IntermediatePreset) {
-    // for sample in samples.items.iter() {
     for sample in &samples.items {
         let pad_index: usize = pad_id_to_index(&sample.id);
         let ref mut pad = preset.pads[pad_index];
         
-        if sample.references.is_none() {
-            pad.inactive = true;
-            continue;
-        }
-
+        if sample.references.is_none() {pad.inactive = true; continue}
         let references = sample.references.as_ref().unwrap();
-        if references.reference.is_none() {
-            pad.inactive = true;
-            continue;
-        }
+        if references.reference.is_none() {pad.inactive = true; continue}
         let reference = references.reference.as_ref().unwrap();
  
         pad.sample_reversed = sample.reversed;
@@ -598,9 +602,15 @@ pub fn rx_sample_params_to_td(pad: &mut IntermediatePad) -> (f64, f64) {
     let length_as_ratio = td_truncate_end - td_truncate_start;
     if length_as_ratio < 1.0 {
         pad.play_range_start = td_truncate_start + length_as_ratio * pad.play_range_start;
-        pad.play_range_end = td_truncate_start + length_as_ratio * pad.play_range_end;   
-        pad.loop_range_start = td_truncate_start + length_as_ratio * pad.loop_range_start;
-        pad.loop_range_end = td_truncate_start + length_as_ratio * pad.loop_range_end;   
+        pad.play_range_end = td_truncate_start + length_as_ratio * pad.play_range_end;
+        if pad.sample_reversed {
+            let temp = pad.loop_range_start;
+            pad.loop_range_start = td_truncate_end - length_as_ratio * pad.loop_range_end;
+            pad.loop_range_end = td_truncate_end - length_as_ratio * temp;
+        } else {
+            pad.loop_range_start = td_truncate_start + length_as_ratio * pad.loop_range_start;
+            pad.loop_range_end = td_truncate_start + length_as_ratio * pad.loop_range_end;   
+        }  
     }
 
     (td_truncate_start, td_truncate_end)
@@ -610,7 +620,7 @@ pub fn rx_sample_params_to_td(pad: &mut IntermediatePad) -> (f64, f64) {
 
 pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
     let mut td_pads = TdPads { items: Vec::new() };
-    // let mut pad_count: u8 = 0;
+    let mut pad_count: u8 = 0;
     let td_velocity = rx_velocity_to_td_velocity(preset.velocity);
     let (td_master_volume, td_volume_adjustment) = rx_master_volume_to_td_master_volume(preset.volume);
     
@@ -624,6 +634,20 @@ pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
         let (td_tune, td_finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
         let td_loopenable = (pad.loop_mode > 0) as u8;
         let td_pingpong = (pad.loop_mode > 1) as u8;
+        let td_mono: u8;
+        let td_outputmode: u8;
+        if pad.mono == 1 {
+            td_mono = 0;
+            td_outputmode = 0;
+        } else {
+            td_mono = 1;
+            td_outputmode = match pad.mono {
+                0 => 0,
+                2 => 1,
+                3 => 2,
+                _ => 0,
+            }
+        };
 
         let td_pad = TdPad {
             color: td_color,
@@ -644,20 +668,25 @@ pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
                     volume: td_volume_adjustment,
                     tune: td_tune,
                     finetune: td_finetune,
+                    mono: td_mono,
+                    outputmode: td_outputmode,
                     velocityintensity: td_velocity,
+                    reversenabled: pad.sample_reversed as u8,
+                    normalizesample: 0,
                     loopenabled: td_loopenable,
                     loopmode: td_pingpong,
                 }
             }
         };
         td_pads.items.push(td_pad);
-        // pad_count += 1;
+        pad_count += 1;
     }
 
     let td_preset = TdPreset {
         version: 13,
-        name: preset.name,
+        // name: preset.name,
         volume: td_master_volume,
+        numberofpadsmode: (pad_count > 16) as u8,
         pads: td_pads,
     };
 
