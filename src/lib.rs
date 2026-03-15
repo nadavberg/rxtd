@@ -170,6 +170,9 @@ pub struct IntermediatePad {
     pub loop_range_end: f64,
     pub loop_mode: u8,
 
+    pub fade_in: f64,
+    pub fade_out: f64,
+
     pub midikey: u8,
     pub color: u8,
 }
@@ -206,6 +209,9 @@ impl IntermediatePad {
             loop_range_end: 1.0,
             loop_mode: 0,
 
+            fade_in: 0.0,
+            fade_out: 1.0,
+
             midikey: 36 + i,
             color: 0,
         }
@@ -219,12 +225,6 @@ pub struct TdPreset {
     #[serde(rename = "@version")]
     pub version: u8,
     
-    // #[serde(rename = "@path")]
-    // pub path: String,
-    
-    // #[serde(rename = "@name")]
-    // pub name: String,
-    
     #[serde(rename = "@volume")]
     pub volume: f64,
     
@@ -233,9 +233,6 @@ pub struct TdPreset {
     
     #[serde(rename = "pads")]
     pub pads: TdPads,
-    
-    // #[serde(rename = "midimap")]
-    // pub global: MidiMap,
 }
 
 #[derive(Debug, Serialize)]
@@ -247,13 +244,10 @@ pub struct TdPads {
 
 #[derive(Debug, Serialize)]
 pub struct TdPad {
-    // #[serde(rename = "@version")]
-    // pub version: u8,
+    #[serde(rename = "@version")]
+    pub version: u8,
     
-    // #[serde(rename = "@activemappings")]
-    // pub activemappings: u8,
-    
-    #[serde(rename = "@colour")] // spelling
+    #[serde(rename = "@colour")] // sic
     pub color: i32,
     
     #[serde(rename = "@volume")]
@@ -261,9 +255,6 @@ pub struct TdPad {
     
     #[serde(rename = "@pan")]
     pub pan: f64,
-    
-    // #[serde(rename = "@pitch")]
-    // pub pitch: f64,
     
     #[serde(rename = "@midikey")]
     pub midikey: u8,
@@ -342,7 +333,7 @@ pub fn build_intermediate_preset(rx_preset: RxPreset) -> IntermediatePreset {
     let mut intermediate_preset = IntermediatePreset::new();
     for tag in rx_preset.tags {
         match tag {
-            RxTag::Param(param) => process_param(&param, &mut intermediate_preset),
+            RxTag::Param(param) => process_param_tag(&param, &mut intermediate_preset),
             RxTag::Samples(samples) => process_samples_container(&samples, &mut intermediate_preset),
             RxTag::Gui(gui) => process_gui_container(&gui, &mut intermediate_preset),
         }
@@ -359,48 +350,41 @@ pub fn pad_id_to_index(pad_id: &str) -> usize {
     8 * bank + pad
 }
 
-pub fn process_param(param: &RxParam, preset: &mut IntermediatePreset) {
-
+pub fn process_param_tag(param: &RxParam, intermediate_preset: &mut IntermediatePreset) {
     if param.value.is_none() { return; }
     let value = param.value.unwrap();
 
-    let param_name: &str;
-
     if !param.id.contains('_') {
-        param_name = &param.id;
-        match param_name {
-            "volume" => preset.volume = value,
-            "velocity" => preset.velocity = value,
-            "layout" => preset.layout = (value != 0.0) as bool,
+        match param.id.as_str() {
+            "volume" => intermediate_preset.volume = value,
+            "velocity" => intermediate_preset.velocity = value,
+            "layout" => intermediate_preset.layout = (value != 0.0) as bool,
             _ => (),
         }
         return;
     }
-
-    let (a, b) = param.id.split_once('_').expect("foo..."); // e.g. "A_B_C" -> ("A", "B_C")
-                
+    
+    let (a, b) = param.id.split_once('_').unwrap();
+    
     // Polyphony:
     if b.len() == 1 {
         let index = (b.as_bytes()[0] - b'1') as usize;
-        preset.polyphony[index] = value as u8;
+        intermediate_preset.polyphony[index] = value as u8;
         return;
     }
-    
-    let pad_id: &str;
+
+    let (param_name, pad_id): (&str, &str);
 
     if a.len() == 2 {
         pad_id = a;
         param_name = b;
     } else {
-        // let (a, b) = param.id.split_once('_').expect("foo...");
-        // let (a, b) = param.id.rsplit_once('_').expect("foo..."); // e.g. "A_B_C" -> ("A_B", "C")
         pad_id = b;
         param_name = a;
-        // println!("{a} {b}");
     }
 
     let pad_index: usize = pad_id_to_index(pad_id);
-    let ref mut pad = preset.pads[pad_index];
+    let ref mut pad = intermediate_preset.pads[pad_index];
 
     match param_name {
         "pitch" => pad.pitch = (15.0 * value).round() as u8,
@@ -419,14 +403,16 @@ pub fn process_param(param: &RxParam, preset: &mut IntermediatePreset) {
         "loop_range_start" => pad.loop_range_start = value,
         "play_range_end" => pad.play_range_end = value,
         "play_range_start" => pad.play_range_start = value,
+        "fade_in" => pad.fade_in = value,
+        "fade_out" => pad.fade_out = value,
         _ => ()
     }
 }
 
-pub fn process_samples_container(samples: &Samples, preset: &mut IntermediatePreset) {
+pub fn process_samples_container(samples: &Samples, intermediate_preset: &mut IntermediatePreset) {
     for sample in &samples.items {
         let pad_index: usize = pad_id_to_index(&sample.id);
-        let ref mut pad = preset.pads[pad_index];
+        let ref mut pad = intermediate_preset.pads[pad_index];
         
         if sample.references.is_none() {pad.inactive = true; continue}
         let references = sample.references.as_ref().unwrap();
@@ -455,15 +441,15 @@ pub fn process_samples_container(samples: &Samples, preset: &mut IntermediatePre
     }
 }
 
-pub fn process_gui_container(gui: &RxGui, intermediate: &mut IntermediatePreset) {
+pub fn process_gui_container(gui: &RxGui, intermediate_preset: &mut IntermediatePreset) {
     for g in gui.params.iter() {
         if g.value.is_none() { continue }
         let value = g.value.unwrap();
         if !g.id.contains('_') {
             // delete? (just continue)
             match g.id.as_str() {
-                "bank" => intermediate.bank = value,
-                "mode" => intermediate.mode = value,
+                "bank" => intermediate_preset.bank = value,
+                "mode" => intermediate_preset.mode = value,
                 _ => (),
             }
             continue;
@@ -471,7 +457,7 @@ pub fn process_gui_container(gui: &RxGui, intermediate: &mut IntermediatePreset)
 
         let (_, pad_id) = g.id.split_once('_').expect("foo...");
         let pad_index: usize = pad_id_to_index(pad_id);
-        intermediate.pads[pad_index].color = (value * 7.0).round() as u8;
+        intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
     }
 }
 
@@ -593,29 +579,49 @@ pub fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64)
     (td_master_volume, td_pad_volume_adjustment)
 }
 
-pub fn rx_sample_params_to_td(pad: &mut IntermediatePad) -> (f64, f64) {
-    let sample_length = pad.sample_length as f64;
+pub fn fix_play_range_loop_fade_and_get_trunc(pad: &mut IntermediatePad) -> (f64, f64) {
+    // println!("start:{}\tend:{}", pad.play_range_start, pad.play_range_end);
+    if pad.sample_reversed {
+        let temp = pad.play_range_start;
+        pad.play_range_start = 1.0 - pad.play_range_end;
+        pad.play_range_end = 1.0 - temp;
+        let temp = pad.fade_in;
+        pad.fade_in = 1.0 - pad.fade_out;
+        pad.fade_out = 1.0 - temp;
+    }
 
+    // println!("in:{}\tout:{}", pad.fade_in, pad.fade_out);
+    if pad.play_range_start > 0.0 || pad.play_range_end < 1.0 {
+        let factor = 1.0 / (pad.play_range_end - pad.play_range_start);
+        pad.fade_in = (pad.fade_in - pad.play_range_start) * factor;
+        pad.fade_out = 1.0 - (pad.play_range_end - pad.fade_out) * factor;
+    }
+        
+    let sample_length = pad.sample_length as f64;
     let td_truncate_start = pad.sample_start as f64 / sample_length;
     let td_truncate_end = pad.sample_end as f64 / sample_length;
 
+    // Fix start/end points:
     let length_as_ratio = td_truncate_end - td_truncate_start;
     if length_as_ratio < 1.0 {
         pad.play_range_start = td_truncate_start + length_as_ratio * pad.play_range_start;
         pad.play_range_end = td_truncate_start + length_as_ratio * pad.play_range_end;
-        if pad.sample_reversed {
-            let temp = pad.loop_range_start;
-            pad.loop_range_start = td_truncate_end - length_as_ratio * pad.loop_range_end;
-            pad.loop_range_end = td_truncate_end - length_as_ratio * temp;
-        } else {
-            pad.loop_range_start = td_truncate_start + length_as_ratio * pad.loop_range_start;
-            pad.loop_range_end = td_truncate_start + length_as_ratio * pad.loop_range_end;   
-        }  
+        
     }
-
-    (td_truncate_start, td_truncate_end)
-}
-
+    
+    // Fix loop points:
+    if pad.sample_reversed {
+        let temp = pad.loop_range_start;
+        pad.loop_range_start = td_truncate_end - length_as_ratio * pad.loop_range_end;
+        pad.loop_range_end = td_truncate_end - length_as_ratio * temp;
+    } else {
+        pad.loop_range_start = td_truncate_start + length_as_ratio * pad.loop_range_start;
+        pad.loop_range_end = td_truncate_start + length_as_ratio * pad.loop_range_end;   
+    }  
+        
+        (td_truncate_start, td_truncate_end)
+    }
+    
 
 
 pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
@@ -630,10 +636,15 @@ pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
 
         let td_color = rx_color_to_td_color(pad.color);
         let td_volume = rx_level_and_gain_to_td_volume(pad.level, pad.gain);
-        let (td_truncate_start, td_truncate_end) = rx_sample_params_to_td(&mut pad);
+        let (td_truncate_start, td_truncate_end) = fix_play_range_loop_fade_and_get_trunc(&mut pad);
         let (td_tune, td_finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
+
+        let td_fadein = f64::min(2.0 * pad.fade_in, 1.0);
+        let td_fadeout = f64::min(2.0 * (1.0 - pad.fade_out), 1.0);
+
         let td_loopenable = (pad.loop_mode > 0) as u8;
         let td_pingpong = (pad.loop_mode > 1) as u8;
+        
         let td_mono: u8;
         let td_outputmode: u8;
         if pad.mono == 1 {
@@ -650,6 +661,7 @@ pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
         };
 
         let td_pad = TdPad {
+            version: 13,
             color: td_color,
             volume: td_volume,
             pan: pad.pan,
@@ -661,8 +673,8 @@ pub fn build_td_preset(preset: IntermediatePreset) -> TdPreset {
                     end: pad.play_range_end,
                     loopstart: pad.loop_range_start,
                     loopend: pad.loop_range_end,
-                    fadein: 0.0,
-                    fadeout: 0.0,
+                    fadein: td_fadein,
+                    fadeout: td_fadeout,
                     truncatestart: td_truncate_start,
                     truncateend: td_truncate_end,
                     volume: td_volume_adjustment,
