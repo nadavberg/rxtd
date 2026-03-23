@@ -5,6 +5,8 @@ use serde::Serialize;
 use hound;
 
 
+
+
 // Root Struct
 #[derive(Debug, Deserialize)]
 pub struct RxPreset {
@@ -91,9 +93,10 @@ pub struct RxGui {
 }
 
 
+
+
 #[derive(Debug)]
 pub struct IntermediatePreset {
-    pub name: String,
     pub polyphony: [u8; 8],
     pub volume: f64,
     pub velocity: f64,
@@ -104,7 +107,6 @@ impl IntermediatePreset {
     pub fn new() -> Self {
         // defaults based on "All clear.rx1200"
         IntermediatePreset {
-            name: String::new(),
             polyphony: [0; 8],
             volume: 0.699999988079071,
             velocity: 0.0,
@@ -273,21 +275,6 @@ impl IntermediatePad {
 
 
 
-pub fn build_intermediate_preset(rx_preset: RxPreset) -> IntermediatePreset {
-    let mut intermediate_preset = IntermediatePreset::new();
-    for tag in rx_preset.tags {
-        match tag {
-            RxTag::Param(param) => process_param_tag(&param, &mut intermediate_preset),
-            RxTag::Samples(samples) => process_samples_container(&samples, &mut intermediate_preset),
-            RxTag::Gui(gui) => process_gui_container(&gui, &mut intermediate_preset),
-        }
-    }
-    intermediate_preset.assign_midi_keys();
-    intermediate_preset.set_truncate_range_and_fix_other_stuff();
-    intermediate_preset.name = rx_preset.name;
-    intermediate_preset
-}
-
 pub fn pad_id_to_index(pad_id: &str) -> usize {
     let bytes = pad_id.as_bytes();
     let bank = (bytes[0] - b'a') as usize;
@@ -393,6 +380,23 @@ pub fn process_gui_container(gui: &RxGui, intermediate_preset: &mut Intermediate
         intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
     }
 }
+
+pub fn build_intermediate_preset(rx_preset: RxPreset) -> IntermediatePreset {
+    let mut intermediate_preset = IntermediatePreset::new();
+    for tag in rx_preset.tags {
+        match tag {
+            RxTag::Param(param) => process_param_tag(&param, &mut intermediate_preset),
+            RxTag::Samples(samples) => process_samples_container(&samples, &mut intermediate_preset),
+            RxTag::Gui(gui) => process_gui_container(&gui, &mut intermediate_preset),
+        }
+    }
+    intermediate_preset.assign_midi_keys();
+    intermediate_preset.set_truncate_range_and_fix_other_stuff();
+    // intermediate_preset.name = rx_preset.name;
+    intermediate_preset
+}
+
+
 
 
 #[derive(Debug, Serialize)]
@@ -507,6 +511,7 @@ pub struct  TdMapping {
 
 
 
+
 // Transformation Functions:
 
 pub fn rx_color_to_td_color(color: u8) -> i32 {
@@ -552,27 +557,30 @@ pub fn rx_velocity_to_td_velocity(rx_velocity: f64) -> f64 {
 }
 
 pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
+    // Convert parameter to ratio: 
     let mut rx_pitch: f64 = match rx_pitch {
-         0 =>  81.0 / 128.0, // -8  +7.82
-         1 =>  85.0 / 128.0, // -7  -8.73 cents
-         2 =>  91.0 / 128.0, // -6  +9.35 cents
-         3 =>  96.0 / 128.0, // -5  +1.95 cents     3/4
-         4 => 102.0 / 128.0, // -4  +6.91 cents     51/64
-         5 => 108.0 / 128.0, // -3  +5.86 cents     27/32
-         6 => 114.0 / 128.0, // -2  -0.53 cents     57/64
-         7 => 121.0 / 128.0, // -1  +2.64 cents
-         8 => 128.0 / 128.0, // +0                          Unison
-         9 => 136.0 / 128.0, // +1  +4.96 cents     17/16   Minor diatonic semitone
-        10 => 144.0 / 128.0, // +2  +3.91 cents     9/8     Pythagorean major second
-        11 => 152.0 / 128.0, // +3  -2.49 cents     19/16
-        12 => 161.0 / 128.0, // +4  -2.9  cents
-        13 => 171.0 / 128.0, // +5  +1.42 cents
-        14 => 181.0 / 128.0, // +6  -0.18 cents ?
-        15 => 192.0 / 128.0, // +7  +1.95 cents     3/2     Perfect Fifth
+        0  =>  81.0 / 128.0, // -8 semitones  +7.82
+        1  =>  85.0 / 128.0, // -7 semitones  -8.73 cents
+        2  =>  91.0 / 128.0, // -6 semitones  +9.35 cents
+        3  =>  96.0 / 128.0, // -5 semitones  +1.95 cents     3/4
+        4  => 102.0 / 128.0, // -4 semitones  +6.91 cents     51/64
+        5  => 108.0 / 128.0, // -3 semitones  +5.86 cents     27/32
+        6  => 114.0 / 128.0, // -2 semitones  -0.53 cents     57/64
+        7  => 121.0 / 128.0, // -1 semitones  +2.64 cents
+        8  => 128.0 / 128.0, //                               Unison
+        9  => 136.0 / 128.0, // +1 semitones  +4.96 cents     17/16   Minor diatonic semitone
+        10 => 144.0 / 128.0, // +2 semitones  +3.91 cents     9/8     Pythagorean major second
+        11 => 152.0 / 128.0, // +3 semitones  -2.49 cents     19/16
+        12 => 161.0 / 128.0, // +4 semitones  -2.9  cents
+        13 => 171.0 / 128.0, // +5 semitones  +1.42 cents
+        14 => 181.0 / 128.0, // +6 semitones  -0.18 cents ?
+        15 => 192.0 / 128.0, // +7 semitones  +1.95 cents     3/2     Perfect Fifth
         _  => 1.0
     };
+    // Convert ratio to semitones:
     rx_pitch = 12.0 * f64::log2(rx_pitch);
     
+    // Convert parameter to ratio:
     let mut rx_speed: f64 = match rx_speed {
         0 => 0.5,
         1 => 1.0,
@@ -582,18 +590,17 @@ pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, r
         5 => 78.0 / 33.0,
         _ => 1.0
     };
+    // Convert ratio to semitones:
     rx_speed = 12.0 * f64::log2(rx_speed);
-
+    
+    // Convert parameter to semitones:
     let rx_finetune = 2.0 * rx_finetune - 1.0;
 
     let total = rx_pitch + rx_speed + rx_finetune;
-    // let td_tune = (total.round() + 48.0) / 96.0;
     let mut td_tune = (total.floor() + 48.0) / 96.0;
     let mut td_finetune = total.fract() + 0.5;
     
-    // println!("total = {total}, td_tune = {td_tune}, td_finetune = {td_finetune}");
-
-
+    // RX finetune range is [-100,+100], TD is only [-50,50]:
     if td_finetune > 1.0 {
         td_tune += 1.0 / 96.0;
         td_finetune -= 1.0;
@@ -602,7 +609,7 @@ pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, r
         td_finetune += 1.0;
     }
     
-    // println!("total = {total}, td_tune = {td_tune}, td_finetune = {td_finetune}");
+    // TODO: calculate sample rate? maybe not...
 
     (td_tune, td_finetune)
 }
