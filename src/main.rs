@@ -9,15 +9,30 @@ use rxtd::*;
 
 mod cli;
 
+use inquire::{CustomUserError, Text};
 
+use crate::cli::dsel;
 
 fn main() {
     println!();
     
-    // let args: Vec<String> = env::args().collect();
-    // println!("{args:?}");
+    let config_file_name = "config.ini";
+    let mut configuration = cli::Configuration::load(config_file_name);
     
-    cli::directory_selector();
+    dsel(&configuration.input_directory);
+
+    // println!("Select input directory:");
+    // if let Some(path) = cli::directory_selector(&configuration.input_directory) {
+    //     configuration.input_directory = path
+    // }
+
+    // println!("Select output directory:");
+    // if let Some(path) = cli::directory_selector(&configuration.output_directory) {
+    //     configuration.output_directory = path
+    // }
+
+
+    configuration.save(config_file_name);
     /*
     let directory_path = r"C:\Users\Nadav\AppData\Roaming\Inphonik\RX1200\Collections\User Collection";
 
