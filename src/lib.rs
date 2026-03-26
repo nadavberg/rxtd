@@ -1,11 +1,8 @@
 // #![allow(warnings, unused)]
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+//use serde::Serialize;
 use hound;
-
-
-
 
 // Root Struct
 #[derive(Debug, Deserialize)]
@@ -516,14 +513,14 @@ pub struct  TdMapping {
 
 pub fn rx_color_to_td_color(color: u8) -> i32 {
     match color {
-        0 => return -13262337, // #35A1FF
-        1 => return -8099340, // #8469F4
-        2 => return -48223, // #FF43A1
-        3 => return -38559, // #FF6961
-        4 => return -19328, // #FFB480
-        5 => return -461939, // #F8F38D
-        6 => return -12396892, // #42D6A4
-        7 => return -1710619, // #E5E5E5
+        0 => -13262337, // #35A1FF
+        1 => -8099340, // #8469F4
+        2 => -48223, // #FF43A1
+        3 => -38559, // #FF6961
+        4 => -19328, // #FFB480
+        5 => -461939, // #F8F38D
+        6 => -12396892, // #42D6A4
+        7 => -1710619, // #E5E5E5
         _ => -5631463, // #AA1219 (default TD pad color)
     }
 }

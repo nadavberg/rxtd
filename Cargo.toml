@@ -9,3 +9,4 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 hound = "3.5.1"
 inquire = "0.9.4"
 toml = "1.0.7"
+anyhow = "1.0.102"
