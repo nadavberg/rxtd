@@ -27,18 +27,14 @@ fn main() {
 }
 
 fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result<()> {
-        let file_name = rx_file
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .expect(format!("Failed to get file name for {}",  rx_file.display()).as_str()); // can we do better?
-
-        print!("   Converting \"{file_name}.rx1200\"... ");
+        let file_name = rx_file.file_stem().expect("Failed to parse file name");
+        print!("   Converting \"{}.rx1200\"... ", file_name.display());
         let rx_xml = fs::read_to_string(&rx_file)?;
         let rx_preset: RxPreset = de::from_str(&rx_xml)?;
         let intermediate_preset = build_intermediate_preset(rx_preset);
         let td_preset = build_td_preset(intermediate_preset);
         let td_xml = se::to_string(&td_preset)?;
-        let td_xml = format!(r#"<?xml version="1.0" encoding="UTF-8"?>\n{}"#, td_xml);
+        // let td_xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}", td_xml);
         
         let mut td_file_path = output_directory.to_path_buf();
         td_file_path.push(file_name);
@@ -46,5 +42,6 @@ fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result<()>
         
         fs::write(td_file_path, td_xml)?;
         println!("Success!");
+        // println!("{:>20}", "Success!");
         Ok(())
 }

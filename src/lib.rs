@@ -369,12 +369,18 @@ pub fn process_samples_container(samples: &Samples, intermediate_preset: &mut In
 
 pub fn process_gui_container(gui: &RxGui, intermediate_preset: &mut IntermediatePreset) {
     for g in gui.params.iter() {
-        if !g.id.contains('_') { continue }
-        if g.value.is_none() { continue }
-        let value = g.value.unwrap();
-        let pad_id = g.id.split_once('_').expect("It's fine!").1;
-        let pad_index: usize = pad_id_to_index(pad_id);
-        intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
+        if let Some((_, pad_id)) = g.id.split_once('_') {
+            if let Some(value) = g.value {
+                let pad_index: usize = pad_id_to_index(pad_id);
+                intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
+            }
+        }
+        // if !g.id.contains('_') { continue }
+        // if g.value.is_none() { continue }
+        // let value = g.value.unwrap();
+        // let pad_id = g.id.split_once('_').expect("It's fine!").1;
+        // let pad_index: usize = pad_id_to_index(pad_id);
+        // intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
     }
 }
 
