@@ -1,29 +1,79 @@
 #![allow(warnings, unused)]
 
-// use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use quick_xml::{de, se};
+
 use rxtd::*;
+mod config;
 mod cli;
 
 fn main() {
-    println!();
+    let title = "
+██████╗ ████████╗██╗  ██╗██████╗      ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗
+██╔══██╗╚══██╔══╝╚██╗██╔╝██╔══██╗    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝
+██████╔╝   ██║    ╚███╔╝ ██║  ██║    ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   
+██╔══██╗   ██║    ██╔██╗ ██║  ██║    ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   
+██║  ██║   ██║   ██╔╝ ██╗██████╔╝    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   
+╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═════╝      ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   
+";
+    println!("{title}");
 
-    let (input_directory, output_directory) = cli::run_configuration();
+    let (input_directory, output_directory) = config::run_configuration();
     
-    let rx_files = cli::collect_rx_files(&input_directory);
+    let rx_files = collect_rx_files(&input_directory);
     
-    println!("Found {} RX1200 presets 😎\nLet's go!", rx_files.len());
+    let number_of_presets = rx_files.len();
 
-    for rx_file in rx_files {
-        if let Err(e) = convert_preset(&rx_file, &output_directory) {
-            eprintln!("Failed to convert {}: {e}", rx_file.display());
+    if number_of_presets > 0 {
+        println!("Found {number_of_presets} RX1200 presets 😎");
+        println!("Let's go!");
+        for rx_file in rx_files {
+            if let Err(e) = convert_preset(&rx_file, &output_directory) {
+                eprintln!("Failed to convert {}: {e}", rx_file.display());
+            }
         }
+        println!("Done!");
+    } else {
+        println!("No RX1200 presets found in input directory 😮");
     }
 
-    println!("Done!\nEnjoy the rest of your day 🥰");
+    println!("Enjoy the rest of your day 🥰");
     println!();
+}
+
+// pub fn collect_rx_files(directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
+pub fn collect_rx_files(directory_path: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    let directory = match fs::read_dir(directory_path) {
+        Ok(dir) => dir,
+        Err(e) => {
+            println!("Bad directory! {e}");
+            return files;
+        }
+    };
+
+    for entry in directory {
+        // Check file:
+        let file = match entry {
+            Ok(dir_entry) => dir_entry,
+            Err(error) => {
+                println!("Bad file! {error}");
+                continue;
+            }
+        };
+
+        let file_path = file.path();
+
+        if file_path.is_file() {
+            let has_rx_extension = file_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rx1200"));
+            if has_rx_extension {
+                files.push(file_path);
+            }
+        }
+    }
+    files
 }
 
 fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result<()> {
@@ -34,7 +84,6 @@ fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result<()>
         let intermediate_preset = build_intermediate_preset(rx_preset);
         let td_preset = build_td_preset(intermediate_preset);
         let td_xml = se::to_string(&td_preset)?;
-        // let td_xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}", td_xml);
         
         let mut td_file_path = output_directory.to_path_buf();
         td_file_path.push(file_name);
@@ -42,6 +91,5 @@ fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result<()>
         
         fs::write(td_file_path, td_xml)?;
         println!("Success!");
-        // println!("{:>20}", "Success!");
         Ok(())
 }

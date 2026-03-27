@@ -194,7 +194,6 @@ pub struct IntermediatePad {
     pub level: u8,
     pub pan: f64,
 
-    pub pad: f64,
     pub output: u8,
     pub filter: u8,
     pub finetune: f64,
@@ -204,10 +203,10 @@ pub struct IntermediatePad {
 
     pub sample_path: String,
     pub sample_length: u32,
-    pub sample_reversed: bool,//false,
-    pub sample_gain: f64,//1.0,
-    pub sample_start: u32,//0,
-    pub sample_end: u32,//0
+    pub sample_reversed: bool,
+    pub sample_gain: f64,
+    pub sample_start: u32,
+    pub sample_end: u32,
 
     pub play_range_start: f64,
     pub play_range_end: f64,
@@ -236,7 +235,6 @@ impl IntermediatePad {
             level: 15,
             pan: 0.5,
 
-            pad: 0.0,
             output: (i % 8),
             filter: 0,
             finetune: 0.5,
@@ -292,7 +290,7 @@ pub fn process_param_tag(param: &RxParam, intermediate_preset: &mut Intermediate
             "layout" => intermediate_preset.layout = (value != 0.0) as bool,
             _ => (),
         }
-        return;
+        return
     }
     
     let (a, b) = param.id.split_once('_').unwrap();
@@ -301,7 +299,7 @@ pub fn process_param_tag(param: &RxParam, intermediate_preset: &mut Intermediate
     if b.len() == 1 {
         let index = (b.as_bytes()[0] - b'1') as usize;
         intermediate_preset.polyphony[index] = value as u8;
-        return;
+        return
     }
 
     let (param_name, pad_id): (&str, &str);
@@ -322,7 +320,6 @@ pub fn process_param_tag(param: &RxParam, intermediate_preset: &mut Intermediate
         "decay" => pad.decay = value,
         "level" => pad.level = (15.0 * value).round() as u8,
         "pan" => pad.pan = value,
-        "pad" => pad.pad = value,
         "output" => pad.output = value as u8,
         "filter" => pad.filter = value as u8,
         "finetune" => pad.finetune = value,
@@ -375,12 +372,6 @@ pub fn process_gui_container(gui: &RxGui, intermediate_preset: &mut Intermediate
                 intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
             }
         }
-        // if !g.id.contains('_') { continue }
-        // if g.value.is_none() { continue }
-        // let value = g.value.unwrap();
-        // let pad_id = g.id.split_once('_').expect("It's fine!").1;
-        // let pad_index: usize = pad_id_to_index(pad_id);
-        // intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
     }
 }
 
@@ -395,7 +386,6 @@ pub fn build_intermediate_preset(rx_preset: RxPreset) -> IntermediatePreset {
     }
     intermediate_preset.assign_midi_keys();
     intermediate_preset.set_truncate_range_and_fix_other_stuff();
-    // intermediate_preset.name = rx_preset.name;
     intermediate_preset
 }
 
@@ -414,13 +404,36 @@ pub struct TdPreset {
     #[serde(rename = "@numberofpadsmode")]
     pub numberofpadsmode: u8,
     
+    #[serde(rename = "@voicesvoicegroupparam00")]
+    pub voicesvoicegroupparam00: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam01")]
+    pub voicesvoicegroupparam01: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam02")]
+    pub voicesvoicegroupparam02: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam03")]
+    pub voicesvoicegroupparam03: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam04")]
+    pub voicesvoicegroupparam04: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam05")]
+    pub voicesvoicegroupparam05: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam06")]
+    pub voicesvoicegroupparam06: u8,
+    
+    #[serde(rename = "@voicesvoicegroupparam07")]
+    pub voicesvoicegroupparam07: u8,
+    
     #[serde(rename = "pads")]
     pub pads: TdPads,
 }
 
 #[derive(Debug, Serialize)]
 pub struct TdPads {
-    // A Vec named "Pad" will serialize into repeating <Pad> tags
     #[serde(rename = "pad")]
     pub items: Vec<TdPad>,
 }
@@ -441,6 +454,9 @@ pub struct TdPad {
     
     #[serde(rename = "@midikey")]
     pub midikey: u8,
+    
+    #[serde(rename = "@voicegroup")]
+    pub voicegroup: u8,
     
     #[serde(rename = "mappings")]
     pub mappings: TdMappings,
@@ -663,6 +679,7 @@ pub fn build_td_preset(intermediate_preset: IntermediatePreset) -> TdPreset {
             volume: td_volume,
             pan: pad.pan,
             midikey: pad.midikey,
+            voicegroup: pad.output,
             mappings: TdMappings { mapping:TdMapping {
                 path: pad.sample_path,
                 start: pad.play_range_start,
@@ -691,6 +708,14 @@ pub fn build_td_preset(intermediate_preset: IntermediatePreset) -> TdPreset {
         version: 13,
         volume: td_master_volume,
         numberofpadsmode: (pad_count > 16) as u8,
+        voicesvoicegroupparam00: intermediate_preset.polyphony[0],
+        voicesvoicegroupparam01: intermediate_preset.polyphony[1],
+        voicesvoicegroupparam02: intermediate_preset.polyphony[2],
+        voicesvoicegroupparam03: intermediate_preset.polyphony[3],
+        voicesvoicegroupparam04: intermediate_preset.polyphony[4],
+        voicesvoicegroupparam05: intermediate_preset.polyphony[5],
+        voicesvoicegroupparam06: intermediate_preset.polyphony[6],
+        voicesvoicegroupparam07: intermediate_preset.polyphony[7],
         pads: td_pads,
     }
 }

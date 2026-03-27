@@ -1,88 +1,14 @@
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf, MAIN_SEPARATOR, MAIN_SEPARATOR_STR};
-// use inquire::Select;
-use serde::{Serialize, Deserialize};
-
-pub fn collect_rx_files(directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-
-    let directory = match fs::read_dir(directory_path) {
-        Ok(dir) => dir,
-        Err(e) => {
-            println!("Bad directory! {e}");
-            return files;
-        }
-    };
-
-    for entry in directory {
-        // Check file:
-        let file = match entry {
-            Ok(dir_entry) => dir_entry,
-            Err(error) => {
-                println!("Bad file! {error}");
-                continue;
-            }
-        };
-
-        let file_path = file.path();
-
-        if !file_path.is_file() {continue} // exclude directories
-
-        // Check extension:
-        let has_rx_extension = file_path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("rx1200"))
-            .unwrap_or(false);
-        if !has_rx_extension {continue}
-
-        files.push(file_path);
-    }
-    files
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Configuration{
-    pub input_directory: PathBuf,
-    pub output_directory: PathBuf,
-}
-
-impl Default for Configuration {
-    fn default() -> Self {
-        let appdata_folder = env::var("APPDATA").expect("Failed to get AppData folder");
-        let mut input_directory = PathBuf::from(appdata_folder);
-        input_directory.push(r"Inphonik\RX1200\Collections\Factory Collection");
-
-        let root_folder = env::var("HOMEDRIVE").expect("Failed to get drive root folder");
-        let output_directory = env::current_dir().unwrap_or_else(|_| PathBuf::from(root_folder));
- 
-        Configuration { input_directory, output_directory, }
-    }
-}
-
-impl Configuration {
-    pub fn load(file_path: &str) -> Self {
-        match fs::read_to_string(file_path) {
-            Ok(s) => toml::from_str(&s).expect("Failed to parse config file"),
-            Err(_) => Configuration::default(),
-        }
-    }
-
-    pub fn save(&self, file_path: &str) {
-        let toml_string = toml::to_string(self).expect("Failed to serialize config");
-        fs::write(file_path, toml_string).expect("Failed to write config file");
-    }
-}
-
+use inquire::Select;
 use inquire::autocompletion::{Autocomplete, Replacement};
 use inquire::{CustomUserError, Text};
+use inquire::ui::{Color, RenderConfig, StyleSheet, Styled, Attributes};
 
 #[derive(Clone, Default)]
 pub struct FilePathCompleter;
 
 impl Autocomplete for FilePathCompleter {
-    // Returns a list of strings to show in the dropdown/list
     fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
         let path = PathBuf::from(input);
         
@@ -140,45 +66,81 @@ impl Autocomplete for FilePathCompleter {
     }
 }
 
-pub fn directory_selector(message: &str, initial_path: &Path) -> Option<PathBuf> {
+fn make_render_config1() -> RenderConfig<'static> {
+    let mut render_config = RenderConfig::empty();
+    render_config.prompt_prefix = Styled::new("");
+    render_config.answered_prompt_prefix = Styled::new("");
+    render_config.prompt = StyleSheet::new().with_fg(Color::LightGreen).with_attr(Attributes::BOLD);
+    render_config.text_input = StyleSheet::new().with_fg(Color::DarkGreen);
+    render_config.answer = StyleSheet::new().with_fg(Color::DarkBlue);
+    render_config.option = StyleSheet::new().with_fg(Color::DarkGrey);
+    render_config.selected_option = Some(StyleSheet::new().with_fg(Color::DarkGrey).with_attr(Attributes::BOLD));
+    render_config.help_message = StyleSheet::new().with_fg(Color::DarkBlue);
+    render_config.highlighted_option_prefix = Styled::new(">").with_fg(Color::DarkBlue);
+    render_config
+}
+
+fn make_render_config2() -> RenderConfig<'static> {
+    let mut render_config = RenderConfig::empty();
+    render_config.prompt_prefix = Styled::new("");
+    render_config.answered_prompt_prefix = Styled::new("");
+    render_config.prompt = StyleSheet::new().with_fg(Color::DarkBlue);
+    render_config.answer = StyleSheet::new().with_fg(Color::DarkBlue);
+    render_config.selected_option = Some(StyleSheet::new().with_attr(Attributes::BOLD));
+    render_config.help_message = StyleSheet::new().with_fg(Color::DarkBlue);
+    render_config.highlighted_option_prefix = Styled::new(">").with_fg(Color::DarkBlue);
+    render_config
+}
+
+pub fn directory_selector(message: &str, initial_path: &Path, allow_creation: bool) -> Option<PathBuf> {
+
+    let render_config = make_render_config1();
+    
+    let mut initial_path = initial_path.to_str()?;
+    if initial_path.starts_with("\\\\?\\") {
+        initial_path = initial_path.strip_prefix("\\\\?\\").unwrap();
+    }
+
     loop {
         let answer = Text::new(message)
             .with_autocomplete(FilePathCompleter::default())
-            .with_initial_value(initial_path.to_str().unwrap())
-            // .with_help_message("↑↓ to move, tab to autocomplete, enter to submit")
+            .with_initial_value(initial_path)
+            .with_render_config(render_config)
             .prompt();
     
         match answer {
-            Ok(p) => {
-                let path = if let Some(s) = p.strip_suffix(MAIN_SEPARATOR) {s} else {&p};
+            Ok(path) => {
                 let path = PathBuf::from(path);
-                if path.is_dir() { return Some(path); }
-                println!("That ain't no directory! Try again...");
+                if path.is_dir() { return Some(path.canonicalize().unwrap()); }
+
+                if allow_creation {
+                    println!("That's not an existing directory...");
+                    let message = "Select an option:";
+                    let options = vec![
+                        format!("Create new directory \"{}\"", path.display()),
+                        "Select different directory".to_string(),
+                    ];
+                    let render_config = make_render_config2();
+                    if let Ok(a) = Select::new(message, options).with_render_config(render_config).without_filtering().without_help_message().prompt() {
+                        if a == "Select different directory" {
+                            println!("Ok let's try again:")
+                        } else {
+                            if let Ok(_) = fs::create_dir(&path) {
+                                println!("Successfully created \"{}\"", path.display());
+                                return Some(path);
+                            } else {
+                                println!("Could not create \"{}\", try again...", path.display());
+                            }
+                        }
+                    }
+                } else {
+                    println!("That's not an existing directory, try again...");
+                }
             },
             Err(e) => {
-                println!("Problemo!");
-                println!("{e}");
+                println!("Error: {e}");
                 println!("Try again...");
             },
         }
     }
-}
-
-pub fn run_configuration() -> (PathBuf, PathBuf) {
-    let config_file_name = "config.ini";
-    // fs::remove_file(config_file_name);
-    
-    let mut configuration = Configuration::load(config_file_name);
-    
-    if let Some(path) = directory_selector("Enter input directory:", &configuration.input_directory) {
-        configuration.input_directory = path;
-    }
-    
-    if let Some(path) = directory_selector("Enter output directory:", &configuration.output_directory) {
-        configuration.output_directory = path;
-    }
-           
-    configuration.save(config_file_name);
-
-    (configuration.input_directory, configuration.output_directory)
 }

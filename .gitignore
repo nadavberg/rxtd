@@ -3,3 +3,5 @@
 /converted_presets
 Cargo.lock
 config.ini
+config.toml
+TODO.txt
