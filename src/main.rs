@@ -1,23 +1,21 @@
-#![allow(warnings, unused)]
+// #![allow(warnings, unused)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use quick_xml::{de, se};
+use quick_xml::se;
 
 use rxtd::*;
-mod config;
-mod cli;
 
 fn main() {
-    let title = "
-██████╗ ████████╗██╗  ██╗██████╗      ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗
-██╔══██╗╚══██╔══╝╚██╗██╔╝██╔══██╗    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝
-██████╔╝   ██║    ╚███╔╝ ██║  ██║    ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   
-██╔══██╗   ██║    ██╔██╗ ██║  ██║    ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   
-██║  ██║   ██║   ██╔╝ ██╗██████╔╝    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   
-╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═════╝      ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   
-";
-    println!("{title}");
+//     let title = "
+// ██████╗ ████████╗██╗  ██╗██████╗      ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗
+// ██╔══██╗╚══██╔══╝╚██╗██╔╝██╔══██╗    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝
+// ██████╔╝   ██║    ╚███╔╝ ██║  ██║    ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   
+// ██╔══██╗   ██║    ██╔██╗ ██║  ██║    ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   
+// ██║  ██║   ██║   ██╔╝ ██╗██████╔╝    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   
+// ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═════╝      ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   
+// ";
+//     println!("{title}");
 
     let (input_directory, output_directory) = config::run_configuration();
     
@@ -42,7 +40,6 @@ fn main() {
     println!();
 }
 
-// pub fn collect_rx_files(directory_path: impl AsRef<Path>) -> Vec<PathBuf> {
 pub fn collect_rx_files(directory_path: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -55,7 +52,6 @@ pub fn collect_rx_files(directory_path: &Path) -> Vec<PathBuf> {
     };
 
     for entry in directory {
-        // Check file:
         let file = match entry {
             Ok(dir_entry) => dir_entry,
             Err(error) => {
@@ -79,10 +75,11 @@ pub fn collect_rx_files(directory_path: &Path) -> Vec<PathBuf> {
 fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result<()> {
         let file_name = rx_file.file_stem().expect("Failed to parse file name");
         print!("   Converting \"{}.rx1200\"... ", file_name.display());
-        let rx_xml = fs::read_to_string(&rx_file)?;
-        let rx_preset: RxPreset = de::from_str(&rx_xml)?;
-        let intermediate_preset = build_intermediate_preset(rx_preset);
-        let td_preset = build_td_preset(intermediate_preset);
+
+        let rx_preset = rx::RxPreset::load_from_file(rx_file)?;
+        let intermediate = intermediate::IntermediatePreset::from(rx_preset);
+        let td_preset = td::TdPreset::from(intermediate);
+
         let td_xml = se::to_string(&td_preset)?;
         
         let mut td_file_path = output_directory.to_path_buf();

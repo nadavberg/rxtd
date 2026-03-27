@@ -1,9 +1,7 @@
-// use std::env;
-// use std::fs;
-// use std::path::{PathBuf};
+
+use crate::cli;
 use std::{env, fs, path::PathBuf};
 use serde::{Serialize, Deserialize};
-use crate::cli;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Configuration{
