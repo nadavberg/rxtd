@@ -31,7 +31,8 @@ impl Autocomplete for FilePathCompleter {
         
         // Collect subdirectories:
         entries = fs::read_dir(scan_path)
-            .map_err(|e| CustomUserError::from(e))?
+            // .map_err(|e| CustomUserError::from(e))?
+            .map_err(CustomUserError::from)?
             .filter_map(|entry| {
                 let entry = entry.ok()?;
                 let name = entry.file_name().to_string_lossy().into_owned();
@@ -103,7 +104,7 @@ pub fn directory_selector(message: &str, initial_path: &Path, allow_creation: bo
 
     loop {
         let answer = Text::new(message)
-            .with_autocomplete(FilePathCompleter::default())
+            .with_autocomplete(FilePathCompleter)
             .with_initial_value(initial_path)
             .with_render_config(render_config)
             .prompt();
@@ -124,13 +125,11 @@ pub fn directory_selector(message: &str, initial_path: &Path, allow_creation: bo
                     if let Ok(a) = Select::new(message, options).with_render_config(render_config).without_filtering().without_help_message().prompt() {
                         if a == "Select different directory" {
                             println!("Ok let's try again:")
+                        } else if fs::create_dir(&path).is_ok() {
+                            println!("Successfully created \"{}\"", path.display());
+                            return Some(path);
                         } else {
-                            if let Ok(_) = fs::create_dir(&path) {
-                                println!("Successfully created \"{}\"", path.display());
-                                return Some(path);
-                            } else {
-                                println!("Could not create \"{}\", try again...", path.display());
-                            }
+                            println!("Could not create \"{}\", try again...", path.display());
                         }
                     }
                 } else {

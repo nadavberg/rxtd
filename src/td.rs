@@ -156,37 +156,39 @@ fn rx_color_to_td_color(color: u8) -> i32 {
     }
 }
 
+#[allow(clippy::excessive_precision)]
 fn rx_level_and_gain_to_td_volume(level: u8, gain: f64) -> f64 {
-    let mut level: f64 = match level {
-        00 => -48.125540454678699,
-        01 => -38.583116391055221,
-        02 => -34.146140574112714,
-        03 => -31.223580096152403,
-        04 => -29.040687631705044,
-        05 => -25.846673804992303,
-        06 => -23.516561117611591,
-        07 => -20.890984765096807,
-        08 => -18.298307076753225,
-        09 => -15.869863144299639,
+    let level_db: f64 = match level {
+         0 => -48.125540454678699,
+         1 => -38.583116391055221,
+         2 => -34.146140574112714,
+         3 => -31.223580096152403,
+         4 => -29.040687631705044,
+         5 => -25.846673804992303,
+         6 => -23.516561117611591,
+         7 => -20.890984765096807,
+         8 => -18.298307076753225,
+         9 => -15.869863144299639,
         10 => -13.161780356313614,
         11 => -10.395725911069878,
         12 => -7.7017553469803106,
         13 => -5.2652451244176559,
         14 => -2.5963049656793182,
-        15 => 0.0052625759604806987,
-        _  => 0.0,
+        15 =>  0.0052625759604806987,
+        _  =>  0.0,
     };
-    level = f64::powf(10.0, level * 0.05);
-    0.5 * f64::sqrt(level * 10.0 * gain)
+    let level_ratio = f64::powf(10.0, level_db * 0.05);
+    0.5 * f64::sqrt(level_ratio * 10.0 * gain)
 }
 
 fn rx_velocity_to_td_velocity(rx_velocity: f64) -> f64 {
-    (127.0 / 126.0) * (1.0 - f64::powf(0.01, rx_velocity))
+    (1.0 - f64::powf(0.01, rx_velocity)) / 0.99
+    // (1.0 - f64::powf(0.01, rx_velocity)) * (127.0 / 126.0)
 }
 
+#[allow(clippy::eq_op)]
 fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
-    // Convert parameter to ratio: 
-    let mut rx_pitch: f64 = match rx_pitch {
+    let pitch_ratio: f64 = match rx_pitch {
         0  =>  81.0 / 128.0, // -8 semitones  +7.82
         1  =>  85.0 / 128.0, // -7 semitones  -8.73 cents
         2  =>  91.0 / 128.0, // -6 semitones  +9.35 cents
@@ -205,26 +207,22 @@ fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_fi
         15 => 192.0 / 128.0, // +7 semitones  +1.95 cents     3/2     Perfect Fifth
         _  => 1.0
     };
-    // Convert ratio to semitones:
-    rx_pitch = 12.0 * f64::log2(rx_pitch);
+    let pitch_semitones = 12.0 * f64::log2(pitch_ratio);
     
-    // Convert parameter to ratio:
-    let mut rx_speed: f64 = match rx_speed {
+    let speed_ratio: f64 = match rx_speed {
         0 => 0.5,
         1 => 1.0,
         2 => 45.0 / 33.0,
         3 => 1.5,
         4 => 2.0,
         5 => 78.0 / 33.0,
-        _ => 1.0
+        _ => 1.0,
     };
-    // Convert ratio to semitones:
-    rx_speed = 12.0 * f64::log2(rx_speed);
+    let speed_semitones = 12.0 * f64::log2(speed_ratio);
     
-    // Convert parameter to semitones:
-    let rx_finetune = 2.0 * rx_finetune - 1.0;
+    let finetune_semitones = 2.0 * rx_finetune - 1.0;
 
-    let total = rx_pitch + rx_speed + rx_finetune;
+    let total = pitch_semitones + speed_semitones + finetune_semitones;
     let mut td_tune = (total.floor() + 48.0) / 96.0;
     let mut td_finetune = total.fract() + 0.5;
     
@@ -271,9 +269,9 @@ impl From<intermediate::Preset> for Preset {
         let (td_master_volume, td_volume_adjustment) = rx_master_volume_to_td_master_volume(intermediate.volume);
         
         for pad in intermediate.pads {
+            // println!("{pad:?}");
             if pad.inactive {continue}
             pad_count += 1;
-
             let td_color = rx_color_to_td_color(pad.color);
             let td_volume = rx_level_and_gain_to_td_volume(pad.level, pad.gain);
             let (td_tune, td_finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
