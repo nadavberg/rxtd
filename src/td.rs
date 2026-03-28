@@ -1,9 +1,12 @@
-use crate::intermediate::IntermediatePreset;
+use crate::intermediate;
 use serde::Serialize;
+use std::ffi::OsStr;
+use std::path::Path;
+use std::fs;
 
 #[derive(Debug, Serialize)]
 #[serde(rename = "taldrum")]
-pub struct TdPreset {
+pub struct Preset {
     #[serde(rename = "@version")]
     pub version: u8,
     
@@ -38,17 +41,17 @@ pub struct TdPreset {
     pub voicesvoicegroupparam07: u8,
     
     #[serde(rename = "pads")]
-    pub pads: TdPads,
+    pub pads: Pads,
 }
 
 #[derive(Debug, Serialize)]
-pub struct TdPads {
+pub struct Pads {
     #[serde(rename = "pad")]
-    pub items: Vec<TdPad>,
+    pub items: Vec<Pad>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct TdPad {
+pub struct Pad {
     #[serde(rename = "@version")]
     pub version: u8,
     
@@ -68,17 +71,17 @@ pub struct TdPad {
     pub voicegroup: u8,
     
     #[serde(rename = "mappings")]
-    pub mappings: TdMappings,
+    pub mappings: Mappings,
 }
 
 #[derive(Debug, Serialize)]
-pub struct TdMappings {
+pub struct Mappings {
     #[serde(rename = "mapping")]
-    pub mapping: TdMapping,
+    pub mapping: Mapping,
 }
 
 #[derive(Debug, Serialize)]
-pub struct  TdMapping {
+pub struct  Mapping {
     #[serde(rename = "@path")]
     pub path: String,
 
@@ -139,7 +142,7 @@ pub struct  TdMapping {
 
 // Transformation Functions:
 
-pub fn rx_color_to_td_color(color: u8) -> i32 {
+fn rx_color_to_td_color(color: u8) -> i32 {
     match color {
         0 => -13262337, // #35A1FF
         1 => -8099340, // #8469F4
@@ -153,7 +156,7 @@ pub fn rx_color_to_td_color(color: u8) -> i32 {
     }
 }
 
-pub fn rx_level_and_gain_to_td_volume(level: u8, gain: f64) -> f64 {
+fn rx_level_and_gain_to_td_volume(level: u8, gain: f64) -> f64 {
     let mut level: f64 = match level {
         00 => -48.125540454678699,
         01 => -38.583116391055221,
@@ -177,11 +180,11 @@ pub fn rx_level_and_gain_to_td_volume(level: u8, gain: f64) -> f64 {
     0.5 * f64::sqrt(level * 10.0 * gain)
 }
 
-pub fn rx_velocity_to_td_velocity(rx_velocity: f64) -> f64 {
+fn rx_velocity_to_td_velocity(rx_velocity: f64) -> f64 {
     (127.0 / 126.0) * (1.0 - f64::powf(0.01, rx_velocity))
 }
 
-pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
+fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
     // Convert parameter to ratio: 
     let mut rx_pitch: f64 = match rx_pitch {
         0  =>  81.0 / 128.0, // -8 semitones  +7.82
@@ -239,7 +242,7 @@ pub fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, r
     (td_tune, td_finetune)
 }
 
-pub fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64) {
+fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64) {
     let rx_master_volume = rx_master_volume / 0.6999998092651;
     let td_master_volume: f64;
     let td_pad_volume_adjustment: f64;
@@ -255,15 +258,14 @@ pub fn rx_master_volume_to_td_master_volume(rx_master_volume: f64) -> (f64, f64)
     (td_master_volume, td_pad_volume_adjustment)
 }
 
-pub fn rx_mono_to_td_mono_outputmode(rx_mono: u8) -> (u8, u8) {
+fn rx_mono_to_td_mono_outputmode(rx_mono: u8) -> (u8, u8) {
     if rx_mono == 1 { return (0, 0) }
     (1, match rx_mono { 2 => 1, 3 => 2, _ => 0 })
 }
 
-
-impl From<IntermediatePreset> for TdPreset {
-    fn from(intermediate: IntermediatePreset) -> Self {
-        let mut td_pads = TdPads { items: Vec::new() };
+impl From<intermediate::Preset> for Preset {
+    fn from(intermediate: intermediate::Preset) -> Self {
+        let mut td_pads = Pads { items: Vec::new() };
         let mut pad_count: u8 = 0;
         let td_velocity = rx_velocity_to_td_velocity(intermediate.velocity);
         let (td_master_volume, td_volume_adjustment) = rx_master_volume_to_td_master_volume(intermediate.volume);
@@ -281,14 +283,14 @@ impl From<IntermediatePreset> for TdPreset {
             let td_pingpong = (pad.loop_mode > 1) as u8;
             let (td_mono, td_outputmode) = rx_mono_to_td_mono_outputmode(pad.mono);
 
-            td_pads.items.push(TdPad {
+            td_pads.items.push(Pad {
                 version: 13,
                 color: td_color,
                 volume: td_volume,
                 pan: pad.pan,
                 midikey: pad.midikey,
                 voicegroup: pad.output,
-                mappings: TdMappings { mapping:TdMapping {
+                mappings: Mappings { mapping:Mapping {
                     path: pad.sample_path,
                     start: pad.play_range_start,
                     end: pad.play_range_end,
@@ -312,7 +314,7 @@ impl From<IntermediatePreset> for TdPreset {
             });
         }
 
-        TdPreset {
+        Preset {
             version: 13,
             volume: td_master_volume,
             numberofpadsmode: (pad_count > 16) as u8,
@@ -326,5 +328,16 @@ impl From<IntermediatePreset> for TdPreset {
             voicesvoicegroupparam07: intermediate.polyphony[7],
             pads: td_pads,
         }
+    }
+}
+
+impl Preset {
+    pub fn save_to_file(&self, path: &Path, name: &OsStr) -> anyhow::Result<()> {
+        let xml = quick_xml::se::to_string(self)?;
+        let mut path = path.to_path_buf();
+        path.push(name);
+        path.set_extension("taldrum");
+        fs::write(path, xml)?;
+        Ok(())
     }
 }

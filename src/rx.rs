@@ -4,29 +4,29 @@ use std::path::Path;
 
 // Root Struct
 #[derive(Debug, Deserialize)]
-pub struct RxPreset {
+pub struct Preset {
     #[serde(rename = "@name")]
     pub name: String,
     
     #[serde(rename = "$value")]
-    pub tags: Vec<RxTag>,
+    pub tags: Vec<Tag>,
 }
 
 #[derive(Debug, Deserialize)]
-pub enum RxTag {
+pub enum Tag {
     #[serde(rename = "PARAM")]
-    Param(RxParam),
+    Param(Param),
     
     #[serde(rename = "SAMPLES")]
-    Samples(RxSamples),
+    Samples(Samples),
     
     #[serde(rename = "GUI")]
-    Gui(RxGui),
+    Gui(Gui),
 }
 
 // Generic Param Tag:
 #[derive(Debug, Deserialize)]
-pub struct RxParam {
+pub struct Param {
     #[serde(rename = "@id")]
     pub id: String,
     
@@ -36,14 +36,14 @@ pub struct RxParam {
 
 // Samples Container:
 #[derive(Debug, Deserialize)]
-pub struct RxSamples {
+pub struct Samples {
     #[serde(rename = "SAMPLE", default)]
-    pub items: Vec<RxSample>,
+    pub items: Vec<Sample>,
 }
 
 // Individual Sample:
 #[derive(Debug, Deserialize)]
-pub struct RxSample {
+pub struct Sample {
     #[serde(rename = "@id")]
     pub id: String,
     
@@ -60,19 +60,19 @@ pub struct RxSample {
     pub end: u32,
     
     #[serde(rename = "REFERENCES")]
-    pub references: Option<RxReferences>,
+    pub references: Option<References>,
 }
 
 // References Container:
 #[derive(Debug, Deserialize)]
-pub struct RxReferences {
+pub struct References {
     #[serde(rename = "REFERENCE")]
-    pub reference: Option<RxReference>,
+    pub reference: Option<Reference>,
 }
 
 // Individual Reference:
 #[derive(Debug, Deserialize)]
-pub struct RxReference {
+pub struct Reference {
     #[serde(rename = "@type")]
     pub ref_type: String,
     
@@ -82,12 +82,12 @@ pub struct RxReference {
 
 // GUI Container:
 #[derive(Debug, Deserialize)]
-pub struct RxGui {
+pub struct Gui {
     #[serde(rename = "PARAM", default)]
-    pub params: Vec<RxParam>, 
+    pub params: Vec<Param>, 
 }
 
-impl RxPreset {
+impl Preset {
     pub fn load_from_file(path: &Path) -> anyhow::Result<Self> {
         let xml = fs::read_to_string(path)?;
         let preset = quick_xml::de::from_str(&xml)?;

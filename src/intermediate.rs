@@ -1,24 +1,24 @@
 use hound;
-use crate::rx::{self, RxPreset};
+use crate::rx;
 
 #[derive(Debug)]
-pub struct IntermediatePreset {
+pub struct Preset {
     pub polyphony: [u8; 8],
     pub volume: f64,
     pub velocity: f64,
     pub layout: bool,
-    pub pads: [IntermediatePad; 32],
+    pub pads: [Pad; 32],
 }
 
-impl IntermediatePreset {
+impl Preset {
     pub fn new() -> Self {
         // defaults based on "All clear.rx1200"
-        IntermediatePreset {
+        Preset {
             polyphony: [0; 8],
             volume: 0.699999988079071,
             velocity: 0.0,
             layout: false,
-            pads: std::array::from_fn(|i| {IntermediatePad::new(i)}),
+            pads: std::array::from_fn(|i| {Pad::new(i)}),
         }
     }
     
@@ -96,7 +96,7 @@ impl IntermediatePreset {
 }
 
 #[derive(Debug)]
-pub struct IntermediatePad {
+pub struct Pad {
     pub inactive: bool,
 
     pub pitch: u8,
@@ -134,7 +134,6 @@ pub struct IntermediatePad {
     pub truncate_end: f64,
 }
 
-
 fn pad_id_to_index(pad_id: &str) -> usize {
     let bytes = pad_id.as_bytes();
     let bank = (bytes[0] - b'a') as usize;
@@ -142,7 +141,7 @@ fn pad_id_to_index(pad_id: &str) -> usize {
     8 * bank + pad
 }
 
-fn process_param_tag(param: &rx::RxParam, intermediate_preset: &mut IntermediatePreset) {
+fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
     let value = match param.value {
         Some(v) => v,
         None => return
@@ -202,7 +201,7 @@ fn process_param_tag(param: &rx::RxParam, intermediate_preset: &mut Intermediate
     }
 }
 
-fn process_samples_container(samples: &rx::RxSamples, intermediate_preset: &mut IntermediatePreset) {
+fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Preset) {
     for sample in &samples.items {
         let pad_index: usize = pad_id_to_index(&sample.id);
         let ref mut pad = intermediate_preset.pads[pad_index];
@@ -229,7 +228,7 @@ fn process_samples_container(samples: &rx::RxSamples, intermediate_preset: &mut 
     }
 }
 
-fn process_gui_container(gui: &rx::RxGui, intermediate_preset: &mut IntermediatePreset) {
+fn process_gui_container(gui: &rx::Gui, intermediate_preset: &mut Preset) {
     for g in gui.params.iter() {
         if let Some((_, pad_id)) = g.id.split_once('_') {
             if let Some(value) = g.value {
@@ -240,11 +239,11 @@ fn process_gui_container(gui: &rx::RxGui, intermediate_preset: &mut Intermediate
     }
 }
 
-impl IntermediatePad {
+impl Pad {
     fn new(i: usize) -> Self {
         // defaults based on "All clear.rx1200"
         let i = i as u8;
-        IntermediatePad {
+        Pad {
             inactive: false,
 
             pitch: 8,
@@ -284,14 +283,14 @@ impl IntermediatePad {
     }
 }
 
-impl From<RxPreset> for IntermediatePreset {
-    fn from(rx_preset: rx::RxPreset) -> Self {
-        let mut intermediate = IntermediatePreset::new();
+impl From<rx::Preset> for Preset {
+    fn from(rx_preset: rx::Preset) -> Self {
+        let mut intermediate = Preset::new();
         for tag in rx_preset.tags {
             match tag {
-                rx::RxTag::Param(param) => process_param_tag(&param, &mut intermediate),
-                rx::RxTag::Samples(samples) => process_samples_container(&samples, &mut intermediate),
-                rx::RxTag::Gui(gui) => process_gui_container(&gui, &mut intermediate),
+                rx::Tag::Param(param) => process_param_tag(&param, &mut intermediate),
+                rx::Tag::Samples(samples) => process_samples_container(&samples, &mut intermediate),
+                rx::Tag::Gui(gui) => process_gui_container(&gui, &mut intermediate),
             }
         }
         intermediate.assign_midi_keys();
