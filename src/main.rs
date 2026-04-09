@@ -1,8 +1,9 @@
 // use rxtd::*;
+#![allow(warnings, unused)]
 use rxtd::{collect_rx_files, config, convert_preset};
 
 fn main() -> anyhow::Result<()> {
-    println!("{TITLE}");
+    // println!("{TITLE}");
 
     let (input_directory, output_directory) = config::run_configuration()?;
     

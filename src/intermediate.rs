@@ -42,7 +42,7 @@ impl Preset {
         }
     }
 
-    pub fn finzlize_preset(&mut self) {
+    pub fn finalize_preset(&mut self) {
         self.assign_midi_keys();
         for pad in &mut self.pads {
             if pad.inactive {continue}
@@ -112,13 +112,6 @@ impl Preset {
             pad.truncate_start = truncate_start;
             pad.truncate_end = truncate_end;
         }
-    }
-}
-
-// necessarry?
-impl Default for Preset {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -204,8 +197,6 @@ impl Pad {
         }
     }
 
-
-
     pub fn fix_reversed_pad(&mut self) {
         let temp = self.play_range_start;
         self.play_range_start = 1.0 - self.play_range_end;
@@ -260,13 +251,6 @@ impl Pad {
     }
 }
 
-// necessarry?
-impl Default for Pad {
-    fn default() -> Self {
-        Pad::new(0)
-    }
-}
-
 impl From<rx::Preset> for Preset {
     fn from(rx_preset: rx::Preset) -> Self {
         let mut preset = Preset::new();
@@ -277,28 +261,16 @@ impl From<rx::Preset> for Preset {
                 rx::Tag::Gui(gui) => process_gui_container(&gui, &mut preset),
             }
         }
-        // preset.assign_midi_keys();
-        // preset.set_truncate_range_and_fix_other_stuff();
-        preset.finzlize_preset();
+        preset.finalize_preset();
         preset
     }
 }
 
-fn pad_id_to_index(pad_id: &str) -> usize {
-    let bytes = pad_id.as_bytes();
-    // if !matches!(bytes[0], (b'a'..=b'd')) || !matches!(bytes[1], (b'1'..=b'8')) {
-    //     println!("{}{}", bytes[0] as char, bytes[1] as char);
-    // }
-    let bank = (bytes[0] - b'a') as usize;
-    let pad = (bytes[1] - b'1') as usize;
-    8 * bank + pad
-}
-
-fn pad_id_to_indexx(pad_id: &str) -> Option<usize> {
+fn pad_id_to_index(pad_id: &str) -> Option<usize> {
     let bytes = pad_id.as_bytes();
     if bytes.len() != 2
-        || !matches!(bytes[0], (b'a'..=b'd'))
-        || !matches!(bytes[1], (b'1'..=b'8'))
+        || !matches!(bytes[0], b'a'..=b'd')
+        || !matches!(bytes[1], b'1'..=b'8')
     {
         return None;
     }
@@ -320,7 +292,7 @@ fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
             "layout" => intermediate_preset.layout = value != 0.0,
             _ => (),
         }
-        return;
+        return
     }
 
     let (a, b) = param.id.split_once('_').unwrap();
@@ -328,22 +300,14 @@ fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
     // Polyphony:
     if b.len() == 1 {
         let index = (b.as_bytes()[0] - b'1') as usize;
-        intermediate_preset.polyphony[index] = value as u8;
-        return;
+        if matches!(index, 0..8) {
+            intermediate_preset.polyphony[index] = value as u8;
+        }
+        return
     }
 
-    let (param_name, pad_id): (&str, &str);
-
-    if a.len() == 2 {
-        pad_id = a;
-        param_name = b;
-    } else {
-        pad_id = b;
-        param_name = a;
-    }
-
-    let pad_index: usize = pad_id_to_index(pad_id);
-    // let ref mut pad = intermediate_preset.pads[pad_index];
+    let (param_name, pad_id) = if a.len() == 2 { (a, b) } else { (b, a) };
+    let Some(pad_index) = pad_id_to_index(pad_id) else {return};
     let pad = &mut intermediate_preset.pads[pad_index];
 
     match param_name {
@@ -370,7 +334,7 @@ fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
 
 fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Preset) {
     for sample in &samples.items {
-        let pad_index: usize = pad_id_to_index(&sample.id);
+        let Some(pad_index) = pad_id_to_index(&sample.id) else {continue};
         let pad = &mut intermediate_preset.pads[pad_index];
 
         let Some(references) = &sample.references else {
@@ -383,6 +347,7 @@ fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Pr
             continue;
         };
 
+        // TODO: use envronment variable
         pad.sample_path = match reference.ref_type.as_str() {
             "productCommonData" => format!(r"C:/ProgramData/Inphonik/RX1200{}", reference.value),
             _ => reference.value.clone(),
@@ -397,9 +362,11 @@ fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Pr
 
 fn process_gui_container(gui: &rx::Gui, intermediate_preset: &mut Preset) {
     for g in gui.params.iter() {
-        if let Some((_, pad_id)) = g.id.split_once('_') && let Some(value) = g.value {
-                let pad_index: usize = pad_id_to_index(pad_id);
-                intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
+        if let Some((_, pad_id)) = g.id.split_once('_')
+            && let Some(value) = g.value
+            && let Some(pad_index) = pad_id_to_index(pad_id)
+        {
+            intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
         }
         
     }

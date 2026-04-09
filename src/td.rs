@@ -194,7 +194,7 @@ pub struct  Mapping {
 
 // Transformation Functions:
 
-fn rx_color_to_td(color: u8) -> i32 {
+fn rx_to_td_color(color: u8) -> i32 {
     match color {
         0 => -13262337, // #35A1FF
         1 => -8099340, // #8469F4
@@ -209,7 +209,7 @@ fn rx_color_to_td(color: u8) -> i32 {
 }
 
 #[allow(clippy::excessive_precision)]
-fn rx_level_and_gain_to_td_volume(level: u8, gain: f64) -> f64 {
+fn rx_to_td_volume(level: u8, gain: f64) -> f64 {
     let level_db: f64 = match level {
          0 => -48.125540454678699,
          1 => -38.583116391055221,
@@ -239,7 +239,7 @@ fn rx_velocity_to_td(rx_velocity: f64) -> f64 {
 }
 
 #[allow(clippy::eq_op)]
-fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
+fn rx_to_td_pitch(rx_pitch: u8, rx_speed: u8, rx_finetune: f64) -> (f64, f64) {
     let pitch_ratio: f64 = match rx_pitch {
         0  =>  81.0 / 128.0, // -8 semitones  +7.82
         1  =>  85.0 / 128.0, // -7 semitones  -8.73 cents
@@ -292,7 +292,7 @@ fn rx_pitch_speed_finetune_to_td_tune_finetune(rx_pitch: u8, rx_speed: u8, rx_fi
     (td_tune, td_finetune)
 }
 
-fn rx_fades_to_td(rx_fade_in: f64, rx_fade_out: f64) -> (f64, f64) {
+fn rx_to_td_fades(rx_fade_in: f64, rx_fade_out: f64) -> (f64, f64) {
     let fadein = f64::min(2.0 * rx_fade_in, 1.0);
     let fadeout = f64::min(2.0 * (1.0 - rx_fade_out), 1.0);
     (fadein, fadeout)
@@ -314,12 +314,12 @@ fn rx_master_volume_to_td(rx_master_volume: f64) -> (f64, f64) {
     (td_master_volume, td_pad_volume_adjustment)
 }
 
-fn rx_mono_to_td_mono_outputmode(rx_mono: u8) -> (u8, u8) {
+fn rx_to_td_stereo(rx_mono: u8) -> (u8, u8) {
     if rx_mono == 1 { return (0, 0) }
     (1, match rx_mono { 2 => 1, 3 => 2, _ => 0 })
 }
 
-fn rx_filter_to_td(rx_filter: u8) -> (u8, f64, f64, f64, u8, u8, f64) {
+fn rx_to_td_filter(rx_filter: u8) -> (u8, f64, f64, f64, u8, u8, f64) {
     let mut filtertype = 1u8;
     let mut cutoff = 1.0; // td default
     let mut resonance = 0.0; // td default
@@ -361,16 +361,15 @@ impl From<intermediate::Preset> for Preset {
         let velocityintensity = rx_velocity_to_td(intermediate.velocity);
         
         for pad in intermediate.pads {
-            // println!("{pad:?}");
+            // dbg!(&pad);
+
             if pad.inactive {continue}
             pad_count += 1;
-            let color = rx_color_to_td(pad.color);
-            let td_volume = rx_level_and_gain_to_td_volume(pad.level, pad.gain);
-            let (tune, finetune) = rx_pitch_speed_finetune_to_td_tune_finetune(pad.pitch, pad.speed, pad.finetune);
-            // let fadein = f64::min(2.0 * pad.fade_in, 1.0);
-            // let fadeout = f64::min(2.0 * (1.0 - pad.fade_out), 1.0);
-            let (fadein, fadeout) = rx_fades_to_td(pad.fade_in, pad.fade_out);
-            let (mono, outputmode) = rx_mono_to_td_mono_outputmode(pad.mono);
+            let color = rx_to_td_color(pad.color);
+            let td_volume = rx_to_td_volume(pad.level, pad.gain);
+            let (tune, finetune) = rx_to_td_pitch(pad.pitch, pad.speed, pad.finetune);
+            let (fadein, fadeout) = rx_to_td_fades(pad.fade_in, pad.fade_out);
+            let (mono, outputmode) = rx_to_td_stereo(pad.mono);
             let loopenabled = (pad.loop_mode > 0) as u8;
             let loopmode = (pad.loop_mode > 1) as u8;
             let reversenabled = pad.sample_reversed as u8;
@@ -382,7 +381,7 @@ impl From<intermediate::Preset> for Preset {
                 matrix0source,
                 matrix0destination,
                 matrix0intensity
-            ) = rx_filter_to_td(pad.filter);
+            ) = rx_to_td_filter(pad.filter);
 
             pads.items.push(Pad {
                 version,
