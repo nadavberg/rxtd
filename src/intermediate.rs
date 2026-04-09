@@ -33,6 +33,23 @@ impl Preset {
                     pad_index += 1;
                 }
             }
+        } else {
+            let mut midikey = 36;
+            for i in 0..32 {
+                self.pads[i].midikey = midikey;
+                midikey += 1;
+            }
+        }
+    }
+
+    pub fn finzlize_preset(&mut self) {
+        self.assign_midi_keys();
+        for pad in &mut self.pads {
+            if pad.inactive {continue}
+            if pad.sample_reversed {pad.fix_reversed_pad()}
+            pad.fix_fades();
+            pad.set_truncate_range();
+            pad.fix_loop_range();
         }
     }
 
@@ -186,6 +203,61 @@ impl Pad {
             truncate_end: 1.0,
         }
     }
+
+
+
+    pub fn fix_reversed_pad(&mut self) {
+        let temp = self.play_range_start;
+        self.play_range_start = 1.0 - self.play_range_end;
+        self.play_range_end = 1.0 - temp;
+        let temp = self.fade_in;
+        self.fade_in = 1.0 - self.fade_out;
+        self.fade_out = 1.0 - temp;
+    }
+
+    pub fn fix_fades(&mut self) {
+        let factor = 1.0 / (self.play_range_end - self.play_range_start);
+        self.fade_in = (self.fade_in - self.play_range_start) * factor;
+        self.fade_out = 1.0 - (self.play_range_end - self.fade_out) * factor;
+    }
+
+    pub fn set_truncate_range(&mut self) {
+        let wav = match hound::WavReader::open(&self.sample_path) {
+            Ok(w) => w,
+            Err(e) => {
+                println!("\tProblem with {}: {}", self.sample_path, e);
+                return
+            }
+        };
+
+        let sample_length = wav.duration() as f64;
+        if sample_length < 1.0 {
+            println!("\tZero length sample! ({})", self.sample_path);
+            return
+        }
+
+        self.truncate_start = self.sample_start as f64 / sample_length;
+        self.truncate_end = self.sample_end as f64 / sample_length;
+
+        // Fix start/end points:
+        let factor = self.truncate_end - self.truncate_start;
+        if factor < 1.0 {
+            self.play_range_start = self.truncate_start + factor * self.play_range_start;
+            self.play_range_end = self.truncate_start + factor * self.play_range_end;
+        }
+    }
+
+    pub fn fix_loop_range(&mut self) {
+        let factor = self.truncate_end - self.truncate_start;
+        if self.sample_reversed {
+            let temp = self.loop_range_start;
+            self.loop_range_start = self.truncate_end - factor * self.loop_range_end;
+            self.loop_range_end = self.truncate_end - factor * temp;
+        } else {
+            self.loop_range_start = self.truncate_start + factor * self.loop_range_start;
+            self.loop_range_end = self.truncate_start + factor * self.loop_range_end;
+        }
+    }
 }
 
 // necessarry?
@@ -197,17 +269,18 @@ impl Default for Pad {
 
 impl From<rx::Preset> for Preset {
     fn from(rx_preset: rx::Preset) -> Self {
-        let mut intermediate = Preset::new();
+        let mut preset = Preset::new();
         for tag in rx_preset.tags {
             match tag {
-                rx::Tag::Param(param) => process_param_tag(&param, &mut intermediate),
-                rx::Tag::Samples(samples) => process_samples_container(&samples, &mut intermediate),
-                rx::Tag::Gui(gui) => process_gui_container(&gui, &mut intermediate),
+                rx::Tag::Param(param) => process_param_tag(&param, &mut preset),
+                rx::Tag::Samples(samples) => process_samples_container(&samples, &mut preset),
+                rx::Tag::Gui(gui) => process_gui_container(&gui, &mut preset),
             }
         }
-        intermediate.assign_midi_keys();
-        intermediate.set_truncate_range_and_fix_other_stuff();
-        intermediate
+        // preset.assign_midi_keys();
+        // preset.set_truncate_range_and_fix_other_stuff();
+        preset.finzlize_preset();
+        preset
     }
 }
 
