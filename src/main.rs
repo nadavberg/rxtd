@@ -1,18 +1,12 @@
 // use rxtd::*;
-use rxtd::{config, collect_rx_files, convert_preset};
+use rxtd::{collect_rx_files, config, convert_preset};
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     println!("{TITLE}");
 
-    let (input_directory, output_directory) = config::run_configuration();
+    let (input_directory, output_directory) = config::run_configuration()?;
     
-    let rx_files = match collect_rx_files(&input_directory) {
-        Ok(files) => files,
-        Err(error) => {
-            eprintln!("Whoops! {error}");
-            return
-        }
-    };
+    let rx_files = collect_rx_files(&input_directory)?;
 
     let number_of_presets = rx_files.len();
 
@@ -20,9 +14,7 @@ fn main() {
         println!("Found {number_of_presets} RX1200 presets 😎");
         println!("Let's go!");
         for rx_file in rx_files {
-            if let Err(error) = convert_preset(&rx_file, &output_directory) {
-                eprintln!("Failed to convert {}: {error}", rx_file.display());
-            }
+            convert_preset(&rx_file, &output_directory)?;
         }
         println!("Done!");
     } else {
@@ -31,6 +23,7 @@ fn main() {
 
     println!("Enjoy the rest of your day 🥰");
     println!();
+    Ok(())
 }
 
 

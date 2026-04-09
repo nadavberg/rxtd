@@ -1,10 +1,9 @@
-
 use crate::cli;
+use serde::{Deserialize, Serialize};
 use std::{env, fs, path::PathBuf};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Configuration{
+pub struct Configuration {
     pub input_directory: PathBuf,
     pub output_directory: PathBuf,
 }
@@ -17,8 +16,11 @@ impl Default for Configuration {
 
         let root_folder = env::var("HOMEDRIVE").expect("Failed to get drive root folder");
         let output_directory = env::current_dir().unwrap_or_else(|_| PathBuf::from(root_folder));
- 
-        Configuration { input_directory, output_directory, }
+
+        Configuration {
+            input_directory,
+            output_directory,
+        }
     }
 }
 
@@ -36,23 +38,34 @@ impl Configuration {
     }
 }
 
-pub fn run_configuration() -> (PathBuf, PathBuf) {
+pub fn run_configuration() -> anyhow::Result<(PathBuf, PathBuf)> {
     let config_file_name = "config.toml";
     // fs::remove_file(config_file_name);
-    
+
     let mut configuration = Configuration::load(config_file_name);
-    
-    if let Some(path) = cli::directory_selector("Enter input directory:", &configuration.input_directory, false) {
+
+    if let Some(path) = cli::directory_selector(
+        "Enter input directory:",
+        &configuration.input_directory,
+        false,
+    ) {
         configuration.input_directory = path;
     }
     println!();
-    
-    if let Some(path) = cli::directory_selector("Enter output directory:", &configuration.output_directory, true) {
+
+    if let Some(path) = cli::directory_selector(
+        "Enter output directory:",
+        &configuration.output_directory,
+        true,
+    ) {
         configuration.output_directory = path;
     }
     println!();
-           
+
     configuration.save(config_file_name);
 
-    (configuration.input_directory, configuration.output_directory)
+    Ok((
+        configuration.input_directory,
+        configuration.output_directory,
+    ))
 }

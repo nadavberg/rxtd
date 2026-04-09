@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-quick-xml = { version = "0.31", features = ["serialize"] }
+anyhow = "1.0.102"
+dunce = "1.0.5"
 hound = "3.5.1"
 inquire = "0.9.4"
-toml = "1.0.7"
-anyhow = "1.0.102"
+quick-xml = { version = "0.39.2", features = ["serialize"] }
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "1.1.0"

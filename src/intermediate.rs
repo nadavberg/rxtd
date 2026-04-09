@@ -36,6 +36,7 @@ impl Preset {
         }
     }
 
+    // TODO: propogate errors instead of just printing them and skipping the pad?
     pub fn set_truncate_range_and_fix_other_stuff(&mut self) {
         for pad in &mut self.pads {
             if pad.inactive {
