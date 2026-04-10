@@ -352,6 +352,20 @@ fn rx_to_td_filter(rx_filter: u8) -> (u8, f64, f64, f64, u8, u8, f64) {
     (filtertype, cutoff, resonance, drive, matrix_source, matrix_destination, matrix_intensity)
 }
 
+fn rx_to_td_decay(rx_decay: u8) -> (f64, f64, f64) {
+    match rx_decay {
+        0 => ( 30.0 / 200.0, 0.27, 0.0),
+        1 => ( 35.0 / 200.0, 0.28, 0.0),
+        2 => ( 50.0 / 200.0, 0.29, 0.0),
+        3 => ( 50.0 / 200.0, 0.30, 0.0),
+        4 => ( 80.0 / 200.0, 0.30, 0.0),
+        5 => (115.0 / 200.0, 0.31, 0.0),
+        6 => (166.0 / 200.0, 0.32, 0.0),
+        7 => (200.0 / 200.0, 0.33, 0.0),
+        _ => (0.0, 0.0, 1.0)
+    }
+}
+
 impl From<intermediate::Preset> for Preset {
     fn from(intermediate: intermediate::Preset) -> Self {
         let mut pads = Pads { items: Vec::new() };
@@ -361,9 +375,8 @@ impl From<intermediate::Preset> for Preset {
         let velocityintensity = rx_velocity_to_td(intermediate.velocity);
         
         for pad in intermediate.pads {
-            // dbg!(&pad);
-
             if pad.inactive {continue}
+            // dbg!(&pad);
             pad_count += 1;
             let color = rx_to_td_color(pad.color);
             let td_volume = rx_to_td_volume(pad.level, pad.gain);
@@ -382,6 +395,7 @@ impl From<intermediate::Preset> for Preset {
                 matrix0destination,
                 matrix0intensity
             ) = rx_to_td_filter(pad.filter);
+            let (amphold, ampdecay, ampsustain) = rx_to_td_decay(pad.decay);
 
             pads.items.push(Pad {
                 version,
@@ -417,9 +431,9 @@ impl From<intermediate::Preset> for Preset {
                     filterdrive,
 
                     ampattack: 0.0,
-                    amphold: 0.0, //
-                    ampdecay: 0.0, //
-                    ampsustain: 1.0, //
+                    amphold,
+                    ampdecay,
+                    ampsustain,
                     amprelease: 0.0,
 
                     env1attack: 0.0,

@@ -19,8 +19,7 @@ pub fn collect_rx_files(directory_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
         .map(|entry| entry.path()) // convert DirEntry to PathBuf
         .filter(|path| {
             // check for rx1200 extension
-            path.extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("rx1200"))
+            path.extension().is_some_and(|x| x.eq_ignore_ascii_case("rx1200"))
         })
         .collect();
     Ok(files)
@@ -35,4 +34,8 @@ pub fn convert_preset(rx_file: &Path, output_directory: &Path) -> anyhow::Result
     td_preset.save_to_file(output_directory, file_name)?;
     println!("Success!");
     Ok(())
+}
+
+pub fn get_extension(path: &Path) -> &str {
+    path.extension().and_then(|x| x.to_str()).unwrap_or("")
 }

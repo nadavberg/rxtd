@@ -1,6 +1,4 @@
 use serde::Deserialize;
-use std::fs;
-use std::path::Path;
 
 // Root Struct
 #[derive(Debug, Deserialize)]
@@ -84,12 +82,12 @@ pub struct Reference {
 #[derive(Debug, Deserialize)]
 pub struct Gui {
     #[serde(rename = "PARAM", default)]
-    pub params: Vec<Param>, 
+    pub params: Vec<Param>,
 }
 
 impl Preset {
-    pub fn load_from_file(path: &Path) -> anyhow::Result<Self> {
-        let xml = fs::read_to_string(path)?;
+    pub fn load_from_file(path: &std::path::Path) -> anyhow::Result<Self> {
+        let xml = std::fs::read_to_string(path)?;
         let preset = quick_xml::de::from_str(&xml)?;
         Ok(preset)
     }

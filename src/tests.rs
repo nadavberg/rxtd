@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use std::path;
     use crate::*;
 
     #[test]
@@ -12,5 +13,11 @@ mod tests {
         for (index, &pad_id) in pad_ids.iter().enumerate() {
             assert_eq!(intermediate::pad_id_to_index(pad_id), Some(index));
         }
+    }
+
+    #[test]
+    fn atest() {
+        // println!("{}", 0.1+0.2);
+        // let path = Path::new(r"C:\Users\Nadav\Desktop\rtxd\spikes.wav");
     }
 }

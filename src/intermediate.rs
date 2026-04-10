@@ -1,5 +1,7 @@
 use crate::rx;
+use anyhow::{anyhow, Result};
 use hound;
+
 
 #[derive(Debug)]
 pub struct Preset {
@@ -24,13 +26,13 @@ impl Preset {
 
     pub fn assign_midi_keys(&mut self) {
         if self.layout {
-            let mut pad_index = 0;
+            let mut index = 0;
             for bank in 0..4 {
-                let mut midikey = 12 * bank + 36;
+                let mut midikey = 36 + 12 * bank;
                 for _ in 0..8 {
-                    self.pads[pad_index].midikey = midikey;
+                    self.pads[index].midikey = midikey;
                     midikey += 1;
-                    pad_index += 1;
+                    index += 1;
                 }
             }
         } else {
@@ -50,67 +52,7 @@ impl Preset {
             pad.fix_fades();
             pad.set_truncate_range();
             pad.fix_loop_range();
-        }
-    }
-
-    // TODO: propogate errors instead of just printing them and skipping the pad?
-    pub fn set_truncate_range_and_fix_other_stuff(&mut self) {
-        for pad in &mut self.pads {
-            if pad.inactive {
-                continue;
-            }
-            if pad.sample_reversed {
-                let temp = pad.play_range_start;
-                pad.play_range_start = 1.0 - pad.play_range_end;
-                pad.play_range_end = 1.0 - temp;
-                let temp = pad.fade_in;
-                pad.fade_in = 1.0 - pad.fade_out;
-                pad.fade_out = 1.0 - temp;
-            }
-
-            // Fix fades:
-            if pad.play_range_start > 0.0 || pad.play_range_end < 1.0 {
-                let factor = 1.0 / (pad.play_range_end - pad.play_range_start);
-                pad.fade_in = (pad.fade_in - pad.play_range_start) * factor;
-                pad.fade_out = 1.0 - (pad.play_range_end - pad.fade_out) * factor;
-            }
-
-            // Check file and calculate trancate start/end:
-            let wav = match hound::WavReader::open(&pad.sample_path) {
-                Ok(w) => w,
-                Err(e) => {
-                    println!("\tProblem with {}: {}", pad.sample_path, e);
-                    continue;
-                }
-            };
-            let sample_length = wav.duration() as f64;
-            if sample_length < 1.0 {
-                println!("\tZero length sample! ({})", pad.sample_path);
-                continue;
-            }
-
-            let truncate_start = pad.sample_start as f64 / sample_length;
-            let truncate_end = pad.sample_end as f64 / sample_length;
-            let factor = truncate_end - truncate_start;
-
-            // Fix start/end points:
-            if factor < 1.0 {
-                pad.play_range_start = truncate_start + factor * pad.play_range_start;
-                pad.play_range_end = truncate_start + factor * pad.play_range_end;
-            }
-
-            // Fix loop points:
-            if pad.sample_reversed {
-                let temp = pad.loop_range_start;
-                pad.loop_range_start = truncate_end - factor * pad.loop_range_end;
-                pad.loop_range_end = truncate_end - factor * temp;
-            } else {
-                pad.loop_range_start = truncate_start + factor * pad.loop_range_start;
-                pad.loop_range_end = truncate_start + factor * pad.loop_range_end;
-            }
-
-            pad.truncate_start = truncate_start;
-            pad.truncate_end = truncate_end;
+            // dbg!(&pad);
         }
     }
 }
@@ -120,7 +62,7 @@ pub struct Pad {
     pub inactive: bool,
 
     pub pitch: u8,
-    pub decay: f64,
+    pub decay: u8,
     pub level: u8,
     pub pan: f64,
 
@@ -162,7 +104,7 @@ impl Pad {
             inactive: false,
 
             pitch: 8,
-            decay: 1.0,
+            decay: 0,
             level: 15,
             pan: 0.5,
 
@@ -197,7 +139,7 @@ impl Pad {
         }
     }
 
-    pub fn fix_reversed_pad(&mut self) {
+    fn fix_reversed_pad(&mut self) {
         let temp = self.play_range_start;
         self.play_range_start = 1.0 - self.play_range_end;
         self.play_range_end = 1.0 - temp;
@@ -206,24 +148,23 @@ impl Pad {
         self.fade_out = 1.0 - temp;
     }
 
-    pub fn fix_fades(&mut self) {
+    fn fix_fades(&mut self) {
         let factor = 1.0 / (self.play_range_end - self.play_range_start);
         self.fade_in = (self.fade_in - self.play_range_start) * factor;
         self.fade_out = 1.0 - (self.play_range_end - self.fade_out) * factor;
     }
 
-    pub fn set_truncate_range(&mut self) {
-        let wav = match hound::WavReader::open(&self.sample_path) {
-            Ok(w) => w,
+    fn set_truncate_range(&mut self) {
+        let sample_length = match get_sample_length(&self.sample_path) {
+            Ok(n) => n as f64,
             Err(e) => {
-                println!("\tProblem with {}: {}", self.sample_path, e);
+                eprintln!("Problem with {}: {}", self.sample_path, e);
                 return
             }
         };
 
-        let sample_length = wav.duration() as f64;
         if sample_length < 1.0 {
-            println!("\tZero length sample! ({})", self.sample_path);
+            eprintln!("Problem with {}: Zero length sample!", self.sample_path);
             return
         }
 
@@ -238,7 +179,7 @@ impl Pad {
         }
     }
 
-    pub fn fix_loop_range(&mut self) {
+    fn fix_loop_range(&mut self) {
         let factor = self.truncate_end - self.truncate_start;
         if self.sample_reversed {
             let temp = self.loop_range_start;
@@ -266,6 +207,40 @@ impl From<rx::Preset> for Preset {
     }
 }
 
+fn get_sample_length(path: &str) -> Result<u64> {
+    use symphonia::core::codecs::CODEC_TYPE_NULL;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+    use std::path::Path;
+    
+    let path = Path::new(path);
+    let source = std::fs::File::open(path)?;
+    let mss = MediaSourceStream::new(Box::new(source), Default::default());
+    
+    // WAV, AIFF, FLAC, MP3, OGG, M4A, AU, SND, W64, WV, PCM
+    let extension = path.extension().and_then(|x| x.to_str()).unwrap_or("");
+    let mut hint = Hint::new();
+    hint.with_extension(extension);
+
+    let metadata_opts: MetadataOptions = Default::default();
+    let format_opts: FormatOptions = Default::default();
+
+    let probed = symphonia::default::get_probe().format(&hint, mss, &format_opts, &metadata_opts)?;
+
+    let mut format = probed.format;
+    let Some(track) = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+    else {
+        return Err(anyhow!("no supported audio tracks"));
+    };
+   
+    Ok(track.codec_params.n_frames.unwrap_or_default())
+}
+
 fn pad_id_to_index(pad_id: &str) -> Option<usize> {
     let bytes = pad_id.as_bytes();
     if bytes.len() != 2
@@ -280,6 +255,7 @@ fn pad_id_to_index(pad_id: &str) -> Option<usize> {
 }
 
 fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
+    
     let value = match param.value {
         Some(v) => v,
         None => return,
@@ -294,9 +270,8 @@ fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
         }
         return
     }
-
     let (a, b) = param.id.split_once('_').unwrap();
-
+    
     // Polyphony:
     if b.len() == 1 {
         let index = (b.as_bytes()[0] - b'1') as usize;
@@ -305,14 +280,14 @@ fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
         }
         return
     }
-
-    let (param_name, pad_id) = if a.len() == 2 { (a, b) } else { (b, a) };
+    
+    let (param_name, pad_id) = if a.len() == 2 { (b, a) } else { (a, b) };
     let Some(pad_index) = pad_id_to_index(pad_id) else {return};
     let pad = &mut intermediate_preset.pads[pad_index];
-
+    // println!("{param_name} {pad_id} ({pad_index}) {value}");
     match param_name {
         "pitch" => pad.pitch = (15.0 * value).round() as u8,
-        "decay" => pad.decay = value,
+        "decay" => pad.decay = (15.0 * value).round() as u8,
         "level" => pad.level = (15.0 * value).round() as u8,
         "pan" => pad.pan = value,
         "output" => pad.output = value as u8,
@@ -360,13 +335,13 @@ fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Pr
     }
 }
 
-fn process_gui_container(gui: &rx::Gui, intermediate_preset: &mut Preset) {
-    for g in gui.params.iter() {
+fn process_gui_container(rx_gui: &rx::Gui, preset: &mut Preset) {
+    for g in rx_gui.params.iter() {
         if let Some((_, pad_id)) = g.id.split_once('_')
             && let Some(value) = g.value
             && let Some(pad_index) = pad_id_to_index(pad_id)
         {
-            intermediate_preset.pads[pad_index].color = (value * 7.0).round() as u8;
+            preset.pads[pad_index].color = (value * 7.0).round() as u8;
         }
         
     }
