@@ -101,11 +101,8 @@ fn make_render_config2() -> RenderConfig<'static> {
     render_config
 }
 
-pub fn directory_selector(
-    message: &str,
-    initial_path: &Path,
-    allow_creation: bool,
-) -> Option<PathBuf> {
+pub fn directory_selector(message: &str, initial_path: &Path, allow_creation: bool)
+-> Option<PathBuf> {
     let render_config = make_render_config1();
 
     let mut initial_path = initial_path.to_str()?;

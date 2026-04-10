@@ -1,7 +1,7 @@
 use crate::rx;
 use anyhow::{anyhow, Result};
-use hound;
-
+use std::env;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct Preset {
@@ -243,15 +243,16 @@ fn get_sample_length(path: &str) -> Result<u64> {
 
 fn pad_id_to_index(pad_id: &str) -> Option<usize> {
     let bytes = pad_id.as_bytes();
-    if bytes.len() != 2
-        || !matches!(bytes[0], b'a'..=b'd')
-        || !matches!(bytes[1], b'1'..=b'8')
+    if bytes.len() == 2
+        || matches!(bytes[0], b'a'..=b'd')
+        || matches!(bytes[1], b'1'..=b'8')
     {
-        return None;
+        let bank = (bytes[0] - b'a') as usize;
+        let pad = (bytes[1] - b'1') as usize;
+        Some(8 * bank + pad)
+    } else {
+        None
     }
-    let bank = (bytes[0] - b'a') as usize;
-    let pad = (bytes[1] - b'1') as usize;
-    Some(8 * bank + pad)
 }
 
 fn process_param_tag(param: &rx::Param, intermediate_preset: &mut Preset) {
@@ -324,7 +325,16 @@ fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Pr
 
         // TODO: use envronment variable
         pad.sample_path = match reference.ref_type.as_str() {
-            "productCommonData" => format!(r"C:/ProgramData/Inphonik/RX1200{}", reference.value),
+            "productCommonData" => {
+                let programdata_folder = env::var("PROGRAMDATA").expect("Failed to get ProgramData folder");
+                let mut programdata_folder = env::var("PROGRAMDATA")
+                    .expect("Failed to get ProgramData folder");
+                let mut path = PathBuf::from(&programdata_folder);
+                path.push(r"Inphonik\RX1200\");
+                path.push(&reference.value);
+                path.to_str().unwrap_or(&reference.value).to_string()
+                // format!(r"C:/ProgramData/Inphonik/RX1200{}", reference.value)
+            },
             _ => reference.value.clone(),
         };
 
@@ -343,7 +353,6 @@ fn process_gui_container(rx_gui: &rx::Gui, preset: &mut Preset) {
         {
             preset.pads[pad_index].color = (value * 7.0).round() as u8;
         }
-        
     }
 }
 

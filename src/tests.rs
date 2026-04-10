@@ -17,7 +17,14 @@ mod tests {
 
     #[test]
     fn atest() {
+        use std::{env, fs, path::PathBuf};
         // println!("{}", 0.1+0.2);
         // let path = Path::new(r"C:\Users\Nadav\Desktop\rtxd\spikes.wav");
+        let mut programdata_folder = env::var("PROGRAMDATA")
+            .expect("Failed to get ProgramData folder");
+        let mut path = PathBuf::from(&programdata_folder);
+        path.push(r"Inphonik\RX1200\");
+        // programdata_folder.push_str(r"\Inphonik\RX1200");
+        eprintln!("\n\tProgramData folder: {}\n", path.display());
     }
 }
