@@ -4,7 +4,8 @@ use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use inquire::{CustomUserError, Text};
 use std::fs;
 use std::path::{MAIN_SEPARATOR, MAIN_SEPARATOR_STR, Path, PathBuf};
-// use dunce::canonicalize;
+use std::sync::LazyLock;
+use colored::Colorize;
 
 #[derive(Clone, Default)]
 pub struct FilePathCompleter;
@@ -69,7 +70,7 @@ impl Autocomplete for FilePathCompleter {
     }
 }
 
-fn make_render_config1() -> RenderConfig<'static> {
+static CONFIG_A: LazyLock<RenderConfig> = LazyLock::new(|| {
     let mut render_config = RenderConfig::empty();
     render_config.prompt_prefix = Styled::new("");
     render_config.answered_prompt_prefix = Styled::new("");
@@ -87,9 +88,9 @@ fn make_render_config1() -> RenderConfig<'static> {
     render_config.help_message = StyleSheet::new().with_fg(Color::DarkBlue);
     render_config.highlighted_option_prefix = Styled::new(">").with_fg(Color::DarkBlue);
     render_config
-}
+});
 
-fn make_render_config2() -> RenderConfig<'static> {
+static CONFIG_B: LazyLock<RenderConfig> = LazyLock::new(|| {
     let mut render_config = RenderConfig::empty();
     render_config.prompt_prefix = Styled::new("");
     render_config.answered_prompt_prefix = Styled::new("");
@@ -99,19 +100,15 @@ fn make_render_config2() -> RenderConfig<'static> {
     render_config.help_message = StyleSheet::new().with_fg(Color::DarkBlue);
     render_config.highlighted_option_prefix = Styled::new(">").with_fg(Color::DarkBlue);
     render_config
-}
+});
 
 pub fn directory_selector(message: &str, initial_path: &Path, allow_creation: bool)
 -> Option<PathBuf> {
-    let render_config = make_render_config1();
-
-    let mut initial_path = initial_path.to_str()?;
-
     loop {
         let answer = Text::new(message)
             .with_autocomplete(FilePathCompleter)
-            .with_initial_value(initial_path)
-            .with_render_config(render_config)
+            .with_initial_value(initial_path.to_str()?)
+            .with_render_config(*CONFIG_A)
             .prompt();
 
         match answer {
@@ -120,28 +117,26 @@ pub fn directory_selector(message: &str, initial_path: &Path, allow_creation: bo
                 if path.is_dir() {
                     return Some(dunce::canonicalize(&path).unwrap());
                 }
-
                 if allow_creation {
                     println!("That's not an existing directory...");
                     let message = "Select an option:";
                     let options = vec![
-                        format!("Create new directory \"{}\"", path.display()),
-                        "Select different directory".to_string(),
+                        format!("Create a new directory {}", path.display().to_string().blue()),
+                        "Select a different directory".to_string(),
                     ];
-                    let render_config = make_render_config2();
                     if let Ok(a) = Select::new(message, options)
-                        .with_render_config(render_config)
+                        .with_render_config(*CONFIG_B)
                         .without_filtering()
-                        .without_help_message()
+                        .with_help_message("[↑↓ to move, enter to select")
                         .prompt()
                     {
-                        if a == "Select different directory" {
+                        if a == "Select a different directory" {
                             println!("Ok let's try again:")
                         } else if fs::create_dir(&path).is_ok() {
-                            println!("Successfully created \"{}\"", path.display());
+                            println!("Successfully created {}", path.display().to_string().blue());
                             return Some(path);
                         } else {
-                            println!("Could not create \"{}\", try again...", path.display());
+                            println!("Could not create {}, try again...", path.display().to_string().blue());
                         }
                     }
                 } else {

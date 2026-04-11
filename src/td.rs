@@ -1,7 +1,7 @@
 use crate::intermediate;
 use serde::Serialize;
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs;
 
 #[derive(Debug, Serialize)]
@@ -83,7 +83,7 @@ pub struct Mappings {
 #[derive(Debug, Serialize)]
 pub struct  Mapping {
     #[serde(rename = "@path")]
-    pub path: String,
+    pub path: PathBuf,
 
     #[serde(rename = "@start")]
     pub start: f64,

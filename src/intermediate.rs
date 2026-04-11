@@ -1,7 +1,7 @@
 use crate::rx;
 use anyhow::{anyhow, Result};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Preset {
@@ -73,7 +73,8 @@ pub struct Pad {
     pub mono: u8,
     pub speed: u8,
 
-    pub sample_path: String,
+    // pub sample_path: String,
+    pub sample_path: PathBuf,
     pub sample_length: u32,
     pub sample_reversed: bool,
     pub sample_gain: f64,
@@ -115,7 +116,8 @@ impl Pad {
             mono: 0,
             speed: 0,
 
-            sample_path: String::new(),
+            // sample_path: String::new(),
+            sample_path: PathBuf::new(),
             sample_length: 0,
             sample_reversed: false,
             sample_gain: 1.0,
@@ -158,13 +160,13 @@ impl Pad {
         let sample_length = match get_sample_length(&self.sample_path) {
             Ok(n) => n as f64,
             Err(e) => {
-                eprintln!("Problem with {}: {}", self.sample_path, e);
+                eprintln!("Problem with {}: {}", self.sample_path.display(), e);
                 return
             }
         };
 
         if sample_length < 1.0 {
-            eprintln!("Problem with {}: Zero length sample!", self.sample_path);
+            eprintln!("Problem with {}: Zero length sample!", self.sample_path.display());
             return
         }
 
@@ -207,7 +209,8 @@ impl From<rx::Preset> for Preset {
     }
 }
 
-fn get_sample_length(path: &str) -> Result<u64> {
+// fn get_sample_length(path: &str) -> Result<u64> {
+fn get_sample_length(path: &Path) -> Result<u64> {
     use symphonia::core::codecs::CODEC_TYPE_NULL;
     use symphonia::core::formats::FormatOptions;
     use symphonia::core::io::MediaSourceStream;
@@ -215,8 +218,7 @@ fn get_sample_length(path: &str) -> Result<u64> {
     use symphonia::core::probe::Hint;
     use std::path::Path;
     
-    let path = Path::new(path);
-    let source = std::fs::File::open(path)?;
+    let source = std::fs::File::open(&path)?;
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
     
     // WAV, AIFF, FLAC, MP3, OGG, M4A, AU, SND, W64, WV, PCM
@@ -323,20 +325,30 @@ fn process_samples_container(samples: &rx::Samples, intermediate_preset: &mut Pr
             continue;
         };
 
-        // TODO: use envronment variable
-        pad.sample_path = match reference.ref_type.as_str() {
+        let path = match reference.ref_type.as_str() {
             "productCommonData" => {
                 let programdata_folder = env::var("PROGRAMDATA").expect("Failed to get ProgramData folder");
-                let mut programdata_folder = env::var("PROGRAMDATA")
-                    .expect("Failed to get ProgramData folder");
-                let mut path = PathBuf::from(&programdata_folder);
-                path.push(r"Inphonik\RX1200\");
-                path.push(&reference.value);
-                path.to_str().unwrap_or(&reference.value).to_string()
-                // format!(r"C:/ProgramData/Inphonik/RX1200{}", reference.value)
+                let path = format!(r"{}\Inphonik\RX1200{}", programdata_folder, reference.value);
+                PathBuf::from(path)
             },
-            _ => reference.value.clone(),
+            "productUserData" => {
+                let appdata_folder = env::var("APPDATA").expect("Failed to get AppData folder");
+                let path = format!(r"{}\Inphonik\RX1200{}", appdata_folder, reference.value);
+                PathBuf::from(path)
+            }
+            _ => PathBuf::from(&reference.value),
         };
+        
+        // dbg!(&path);
+        pad.sample_path = match dunce::canonicalize(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Problem with {}: {}", path.display(), e);
+                pad.inactive = true;
+                path
+            }
+        };
+        // dbg!(&pad.sample_path);
 
         pad.sample_reversed = sample.reversed;
         pad.sample_gain = sample.gain;
